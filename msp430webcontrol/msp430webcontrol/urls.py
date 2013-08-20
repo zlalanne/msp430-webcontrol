@@ -6,7 +6,7 @@ admin.autodiscover()
 
 urlpatterns = patterns('',
     # Examples:
-    # url(r'^$', 'msp430webcontrol.views.home', name='home'),
+    url(r'^$', 'msp430.views.home', name='home'),
     # url(r'^msp430webcontrol/', include('msp430webcontrol.foo.urls')),
 
     # Uncomment the admin/doc line below to enable admin documentation:

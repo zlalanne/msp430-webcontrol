@@ -12,6 +12,11 @@ urlpatterns = patterns('',
     # Uncomment the admin/doc line below to enable admin documentation:
     # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
 
+    # TCP Server Testing URL
+    url(r'^test$', 'msp430webcontrol.views.tcp_test', name='tcp_test'),
+
+    url(r'^tcp_comm/', include('tcp_comm.urls')),
+
     # Uncomment the next line to enable the admin:
     url(r'^admin/', include(admin.site.urls)),
 )

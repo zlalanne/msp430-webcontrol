@@ -5,12 +5,14 @@ from msp430.models import msp430
 
 import json
 
+_NEW_DEVICE = False
+
+
 @csrf_exempt
 def register(request):
-    """When an MSP430 connects to the TCP server this is called
-    """
+    """When an MSP430 connects to the TCP server this is called"""
 
-    if request.method == 'POST':
+    if request.method == u'POST':
         try:
             jreq = json.loads(request.POST['json'])
         except:
@@ -35,4 +37,15 @@ def register(request):
     else:
         return HttpResponse('Not a POST', mimetype='application/json')
 
+    global _NEW_DEVICE
+    _NEW_DEVICE = True
     return HttpResponse('ok', mimetype='application/json')
+
+
+def new(request):
+    """Poll for AJAX to determine if there is a new device"""
+
+    global _NEW_DEVICE
+    results = {'new': _NEW_DEVICE}
+    _NEW_DEVICE = False
+    return HttpResponse(json.dumps(results), mimetype='application/json')

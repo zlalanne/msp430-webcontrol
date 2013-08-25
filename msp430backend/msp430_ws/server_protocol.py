@@ -38,7 +38,7 @@ class WebServerProtocol(protocol.Protocol):
 
 
     def connectionMade(self):
-        if self.transport.getPeer() == settings.SITE_SERVER:
+        if self.transport.getPeer().host == settings.SITE_SERVER:
             print "Coming from same server"
         else:
             print "Coming from an MSP430"
@@ -46,25 +46,48 @@ class WebServerProtocol(protocol.Protocol):
 
         self.client.connectionMade()
 
-    def register_msp430(self, msp430):
+    def register_msp430(self):
+        """This sends a http request to the django appliaction. This effictevely
+        enters the MSP430 into the database of the django application. It then
+        tells the websocket server to alter the user that a new MSP430 has
+        come online"""
+
 
         # Need to send MAC and IP of MSP430
         payload = {}
-        payload['mac'] = msp430.mac
-        payload['ip'] = msp430.protocol.transport.getPeer()
+        payload['mac'] = self.client.mac
+        payload['ip'] = self.client.protocol.transport.getPeer().host
 
         data = {'json':json.dumps(payload)}
 
         try:
             headers = {'Content-type': 'application/json',
                        'Accept': 'text/plain'}
-            response = requests.post(SITE_SERVER_ADDRESS, data=json.dumps(data),
+            response = requests.post("http://%s/tcp_comm/register" % SITE_SERVER_ADDRESS, data=json.dumps(data),
                                      headers=headers)
         except:
             pass
 
         # TODO: Need to validate response
-        reactor.callFromThread(self.ws_factory.register_msp430_wsite, msp430)
+
+        # Notify Browsers
+        reactor.callFromThread(self.factory.ws_factory.register_msp430_wsite, self)
+
+    def disconnect_msp430(self):
+        payload = {}
+        payload['mac'] = self.client.mac
+
+        data = {'json':json.dumps(payload)}
+        try:
+            headers = {'Content-type': 'application/json',
+                       'Accept': 'text/plain'}
+            response = requests.post("http://%s/tcp_comm/disconnect" % SITE_SERVER_ADDRESS, data=json.dumps(data),
+                                     headers=headers)
+        except:
+            pass
+
+        # Notify Browsers
+        reactor.callFromThread(self.factory.ws_factory.disconnect_msp430_wsite, self)
 
 
 class ServerState(common_protocol.State):
@@ -161,7 +184,7 @@ class UserClient(WebSocketClient):
         if state == 'config':
             if self.associated_msp430 is not msp430:
                 return
-        msg = {'cmd':common_protocol.ServerCommands.MSP430_STATE_CHANGE, 'msp430_mac':msp430.mac, 'msp430_state':state}
+        msg = {'cmd':common_protocol.ServerCommands.MSP430_STATE_CHANGE, 'msp430_mac':msp430.client.mac, 'msp430_state':state}
         self.protocol.sendMessage(json.dumps(msg))
 
     def onMessage(self, msg):
@@ -227,8 +250,8 @@ class MSP430Client(TCPClient):
         # ourselves every time a packet ends
 
         # If we're registered remove ourselves from active client list
-        #if hasattr(self, 'mac'):
-        #    self.protocol.factory.ws_factory.disconnect_msp430(self)
+        if hasattr(self, 'mac'):
+            self.protocol.factory.ws_factory.disconnect_msp430(self)
         pass
 
 
@@ -343,7 +366,7 @@ class MSP430RegisterState(ServerState):
 
         elif self.re_message_count == 1 and not self.registered:
 
-            self.mac = data
+            self.client.mac = data
             self.registered = True
             self.re_message_count = 0
 
@@ -658,7 +681,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
 
     def notify_clients_msp430_state_change(self, msp430, state='offline'):
         for peerstr, user in self.user_client.iteritems():
-            user.notifyMSP430State(rpi, state)
+            user.notifyMSP430State(msp430, state)
 
     def register_user(self, user):
         if user.protocol.peerstr not in self.user_client:
@@ -673,9 +696,10 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         self.unregister_user_to_msp430(user, user.associated_msp430)
 
     def register_msp430(self, msp430):
-        # this is called when the MSP430 has been authenticated with the WS server
+        # This is called when the MSP430 has been authenticated with the WS server
         # register on the site server
-        reactor.callInThread(self.web_factory.protocol.register_msp430, msp430)
+        reactor.callInThread(msp430.protocol.register_msp430)
+
         # register locally to the factory
         self.msp430_clients[msp430.mac] = msp430
         self.msp430_clients_registered_users[msp430.mac] = []
@@ -687,16 +711,16 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         self.notify_clients_msp430_state_change(msp430, state='online')
 
     def disconnect_msp430(self, msp430):
-        if hasattr(rpi, 'mac'):
+        if hasattr(msp430, 'mac'):
             if self.debug:
-                log.msg("MSP430SocketServerFactory.disconnect_msp430 - %s rpi disconnected" % (rpi.mac,))
-            reactor.callInThread(self.sitecomm.disconnect_msp430, msp430)
-            del self.msp430_clients[rpi.mac]
-            del self.msp430_clients_registered_users[rpi.mac]
+                log.msg("MSP430SocketServerFactory.disconnect_msp430 - %s msp430 disconnected" % (msp430.mac,))
+            reactor.callInThread(msp430.protocol.disconnect_msp430)
+            del self.msp430_clients[msp430.mac]
+            del self.msp430_clients_registered_users[msp430.mac]
 
     def disconnect_msp430_wsite(self, msp430):
-        # this is called after the RPI disconnect has been notified to the web server
-        self.notify_clients_msp430_state_change(rpi, state='offline')
+        """Called after MSP430 has been disconnected from web server"""
+        self.notify_clients_msp430_state_change(msp430, state='offline')
 
     def config_msp430(self, configs):
         """

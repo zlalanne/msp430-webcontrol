@@ -5,9 +5,6 @@ from msp430.models import msp430
 
 import json
 
-_NEW_DEVICE = False
-
-
 @csrf_exempt
 def register(request):
     """When an MSP430 connects to the TCP server this is called"""
@@ -37,15 +34,23 @@ def register(request):
     else:
         return HttpResponse('Not a POST', mimetype='application/json')
 
-    global _NEW_DEVICE
-    _NEW_DEVICE = True
     return HttpResponse('ok', mimetype='application/json')
 
+@csrf_exempt
+def disconnect(request):
+    if request.method == u'POST':
+        try:
+            jreq = json.loads(request.POST['json'])
+        except:
+            return HttpResponseBadRequest('Unable to parse post json key', mimetype='application/json')
 
-def new(request):
-    """Poll for AJAX to determine if there is a new device"""
+        # verify fields exist
+        if 'mac' not in jreq:
+            return HttpResponseBadRequest('Does not have required fields - mac', mimetype='application/json')
 
-    global _NEW_DEVICE
-    results = {'new': _NEW_DEVICE}
-    _NEW_DEVICE = False
-    return HttpResponse(json.dumps(results), mimetype='application/json')
+        msp430 = msp430.objects.get(mac_address=jreq['mac'])
+        msp430.online = False
+        msp430.save()
+
+    return HttpResponse('ok', mimetype='application/json')
+

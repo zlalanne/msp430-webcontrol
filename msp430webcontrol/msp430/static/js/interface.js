@@ -7,13 +7,16 @@ Interface.prototype.notify = function(message, type, timeout) {
     var cls_type;
     switch (type) {
         case 'error':
-            cls_type = 'alert-error';
+            cls_type = 'alert-danger';
             break;
         case 'success':
             cls_type = 'alert-success';
             break;
         case 'info':
             cls_type = 'alert-info';
+            break;
+        case 'warning':
+            cls_type = 'alert-warning';
             break;
         default:
             cls_type = 'alert-error';

@@ -26,37 +26,37 @@ function WSClient(url, debug) {
         'WRITE_DATA':'write_data'
     };
     this.servercmds = {
-        'MSP430_STATE_CHANGE':'MSP430_schange',
+        'MSP430_STATE_CHANGE':'msp430_schange',
         'WRITE_DATA':'write_data'
     };
 }
 
 WSClient.prototype.ws_onmessage = function(msg) {
     var parsedMsg = jQuery.parseJSON(msg.data);
-    if (this.debug)
-        console.log(parsedMsg);
+    //if (this.debug)
+    console.log(parsedMsg);
 
     switch (parsedMsg.cmd) {
-        case this.servercmds.RPI_STATE_CHANGE:
+        case this.servercmds.MSP430_STATE_CHANGE:
             // for now i don't care, just refresh menu
-            switch(parsedMsg.rpi_state)
+            switch(parsedMsg.msp430_state)
             {
                 case 'drop_stream':
-                    // when any RPI drops from its streaming state
-                    // this occurs when a RPI gets reconfigured (admin change)
-                    if (this.e_msp430_drop_stream) this.e_msp430_drop_stream(parsedMsg.rpi_mac);
+                    // When any MSP430 drops from its streaming state
+                    // This occurs when a MSP430 gets reconfigured (admin change)
+                    if (this.e_msp430_drop_stream) this.e_msp430_drop_stream(parsedMsg.msp430_mac);
                     break;
                 case 'stream':
-                    // when any RPI begins streaming
-                    if (this.e_msp430_stream) this.e_msp430_stream(parsedMsg.rpi_mac);
+                    // When any MSP430 begins streaming
+                    if (this.e_msp430_stream) this.e_msp430_stream(parsedMsg.msp430_mac);
                     break;
                 case 'online':
-                    // when any RPI comes online
-                    if (this.e_msp430_online) this.e_msp430_online(parsedMsg.rpi_mac);
+                    // When any MSP430 comes online
+                    if (this.e_msp430_online) this.e_msp430_online(parsedMsg.msp430_mac);
                     break;
                 case 'offline':
-                    // when any RPI goes offline
-                    if (this.e_msp430_offline) this.e_msp430_offline(parsedMsg.rpi_mac);
+                    // When any MSP430 goes offline
+                    if (this.e_msp430_offline) this.e_msp430_offline(parsedMsg.msp430_mac);
                     break;
                 default:
                     break;

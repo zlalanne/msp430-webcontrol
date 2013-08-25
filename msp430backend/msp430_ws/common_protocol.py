@@ -34,7 +34,7 @@ class ServerCommands(object):
     WRITE_DATA = 'write_data'
     REGISTER = 'reg'
 
-    RPI_STATE_CHANGE = 'rpi_schange'
+    MSP430_STATE_CHANGE = 'msp430_schange'
 
 class RPIClientCommands(object):
     CONFIG_OK = 'c_ok'

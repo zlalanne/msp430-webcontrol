@@ -1,5 +1,6 @@
 function Interface() {
-    this.menu_click = undefined;
+    this.rpi_menu_click = undefined;
+    this.wsclient = undefined;
 }
 
 Interface.prototype.notify = function(message, type, timeout) {
@@ -24,7 +25,6 @@ Interface.prototype.notify = function(message, type, timeout) {
     html += message;
     html += '</div>';
     var newmsg = $(html);
-
     $('.messagecontainer').empty();
     $('.messagecontainer').append(newmsg);
 
@@ -35,7 +35,6 @@ Interface.prototype.notify = function(message, type, timeout) {
     }
 };
 
-/*
 Interface.prototype.createRpiList = function(data) {
     var self = this;
     var dropdownul = $('.nav > .dropdown > ul.dropdown-menu');
@@ -43,12 +42,12 @@ Interface.prototype.createRpiList = function(data) {
 
     var li;
     var li_lst = [];
-    if (data.length === 0)
+    if (data.length == 0)
     {
         li = $('<li><a href="#" class="offline_pi">No RPIs</a></li>');
         li_lst.push(li);
         dropdownul.append(li_lst);
-        return null;
+        return null
     }
 
     for (var i in data) {
@@ -58,7 +57,7 @@ Interface.prototype.createRpiList = function(data) {
         (function(i, li, data){
             $(li).find('a').click(function(e) {
                 var context = {'domli':li, 'data':data[i]};
-                self.rpiClicked(context);
+                self.rpiClicked(context)
                 e.preventDefault();
             });
         })(i, li, data, self);
@@ -71,7 +70,7 @@ Interface.prototype.createRpiList = function(data) {
 
 Interface.prototype.rpiClicked = function(context) {
     // context is {'domli':li, 'data':data[i]}
-    if (this.menu_click) this.menu_click(context);
+    if (this.rpi_menu_click) this.rpi_menu_click(context);
 };
 
 Interface.prototype.getAjaxMenu = function() {
@@ -120,5 +119,5 @@ Interface.prototype.cleanup = function() {
         }
     }
 };
-*/
+
 var interface = new Interface();

@@ -15,7 +15,6 @@ class WebServerProtocol(protocol.Protocol):
 
         self.client = None
 
-
     def dataReceived(self, data):
 
         data = data.strip()
@@ -58,15 +57,12 @@ class WebServerProtocol(protocol.Protocol):
         payload['mac'] = self.client.mac
         payload['ip'] = self.client.protocol.transport.getPeer().host
 
-        data = {'json':json.dumps(payload)}
+        data = {'json': payload}
 
-        try:
-            headers = {'Content-type': 'application/json',
-                       'Accept': 'text/plain'}
-            response = requests.post("http://%s/tcp_comm/register" % SITE_SERVER_ADDRESS, data=json.dumps(data),
-                                     headers=headers)
-        except:
-            pass
+        headers = {'Content-type': 'application/json',
+                   'Accept': 'text/plain'}
+        response = requests.post("http://%s/tcp_comm/register/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
+                                 headers=headers)
 
         # TODO: Need to validate response
 
@@ -77,11 +73,11 @@ class WebServerProtocol(protocol.Protocol):
         payload = {}
         payload['mac'] = self.client.mac
 
-        data = {'json':json.dumps(payload)}
+        data = {'json':payload}
         try:
             headers = {'Content-type': 'application/json',
                        'Accept': 'text/plain'}
-            response = requests.post("http://%s/tcp_comm/disconnect" % SITE_SERVER_ADDRESS, data=json.dumps(data),
+            response = requests.post("http://%s/tcp_comm/disconnect/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
                                      headers=headers)
         except:
             pass

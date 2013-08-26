@@ -1,4 +1,6 @@
 {% load staticfiles %}
+{% load compress %}
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -6,21 +8,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="">
     <meta name="author" content="">
-    <!-- link rel="shortcut icon" href="../../assets/ico/favicon.png" -->
 
     <title>{% block title %}MSP430 Web Control{% endblock %}</title>
 
+    {% compress css %}
+    {% block styles %}
     <!-- Bootstrap core CSS -->
     <link href="{% static "bootstrap/css/bootstrap.css" %}" rel="stylesheet">
 
     <!-- Custom styles for this template -->
     <link href="{% static "bootstrap/css/navbar-fixed-top.css" %}" rel="stylesheet">
+    <link rel="stylesheet" type="text/less" href="{% static "css/global.less" %}" media="screen" />
+    {% endblock %}
+    {% endcompress %}
 
-    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
-    <!--[if lt IE 9]>
-      <script src="../../assets/js/html5shiv.js"></script>
-      <script src="../../assets/js/respond.min.js"></script>
-    <![endif]-->
   </head>
 
   <body>
@@ -39,16 +40,8 @@
         <div class="navbar-collapse collapse">
           <ul class="nav navbar-nav">
             <li class="dropdown">
-              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Dropdown <b class="caret"></b></a>
-              <ul class="dropdown-menu">
-                <li><a href="#">Action</a></li>
-                <li><a href="#">Another action</a></li>
-                <li><a href="#">Something else here</a></li>
-                <li class="divider"></li>
-                <li class="dropdown-header">Nav header</li>
-                <li><a href="#">Separated link</a></li>
-                <li><a href="#">One more separated link</a></li>
-              </ul>
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">MSP430s <b class="caret"></b></a>
+              <ul class="dropdown-menu"></ul>
             </li>
           </ul>
           <ul class="nav navbar-nav navbar-right">

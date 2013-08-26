@@ -33,8 +33,9 @@ function WSClient(url, debug) {
 
 WSClient.prototype.ws_onmessage = function(msg) {
     var parsedMsg = jQuery.parseJSON(msg.data);
-    //if (this.debug)
-    console.log(parsedMsg);
+
+    if (this.debug)
+        console.log(parsedMsg);
 
     switch (parsedMsg.cmd) {
         case this.servercmds.MSP430_STATE_CHANGE:

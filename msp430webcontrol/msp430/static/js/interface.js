@@ -9,6 +9,9 @@ Interface.prototype.notify = function(message, type, timeout) {
         case 'error':
             cls_type = 'alert-danger';
             break;
+        case 'danger':
+            cls_type = 'alert-danger';
+            break;
         case 'success':
             cls_type = 'alert-success';
             break;
@@ -19,7 +22,7 @@ Interface.prototype.notify = function(message, type, timeout) {
             cls_type = 'alert-warning';
             break;
         default:
-            cls_type = 'alert-error';
+            cls_type = 'alert-danger';
             break;
     }
 
@@ -38,7 +41,7 @@ Interface.prototype.notify = function(message, type, timeout) {
     }
 };
 
-Interface.prototype.createRpiList = function(data) {
+Interface.prototype.createMSP430list = function(data) {
     var self = this;
     var dropdownul = $('.nav > .dropdown > ul.dropdown-menu');
     dropdownul.empty();
@@ -47,7 +50,7 @@ Interface.prototype.createRpiList = function(data) {
     var li_lst = [];
     if (data.length == 0)
     {
-        li = $('<li><a href="#" class="offline_pi">No RPIs</a></li>');
+        li = $('<li><a href="#" class="offline_msp430">No MSP430s</a></li>');
         li_lst.push(li);
         dropdownul.append(li_lst);
         return null
@@ -56,7 +59,7 @@ Interface.prototype.createRpiList = function(data) {
     for (var i in data) {
         li = $('<li><a href="#">' + data[i]['name'] + '</a></li>');
         if (!data[i]['online'])
-            $(li).find('a').addClass('offline_pi');
+            $(li).find('a').addClass('offline_msp430');
         (function(i, li, data){
             $(li).find('a').click(function(e) {
                 var context = {'domli':li, 'data':data[i]};
@@ -78,8 +81,8 @@ Interface.prototype.rpiClicked = function(context) {
 
 Interface.prototype.getAjaxMenu = function() {
     var self = this;
-    $.getJSON('/user_api/rpis/', function(data){
-        self.menu = self.createRpiList(data);
+    $.getJSON('/user_api/msp430s/', function(data){
+        self.menu = self.createMSP430list(data);
     });
 };
 

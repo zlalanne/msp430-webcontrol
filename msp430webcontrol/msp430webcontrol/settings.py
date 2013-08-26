@@ -80,10 +80,11 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 #    'django.contrib.staticfiles.finders.DefaultStorageFinder',
+    'compressor.finders.CompressorFinder',
 )
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = '4l!nk#5^o3&ka^e+(am8!9=mf=)d0qmarsq2pi-v$!!n1bfady'
+SECRET_KEY = '_tt0ijpwxb^8h0(-yisjb4wtxnuf9czt^w8qj2=lgn@edfm6hw'
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
@@ -125,7 +126,21 @@ INSTALLED_APPS = (
     # Uncomment the next line to enable admin documentation:
     # 'django.contrib.admindocs',
     'msp430',
+    'compressor',
 )
+
+# Compressor Settings
+COMPRESS_ENABLED = False
+
+COMPRESS_PRECOMPILERS = (
+    ('text/less', 'lessc {infile} {outfile}'),
+)
+
+COMPRESS_CSS_FILTERS = (
+    'compressor.filters.css_default.CssAbsoluteFilter',
+    'compressor.filters.cssmin.CSSMinFilter',
+)
+
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

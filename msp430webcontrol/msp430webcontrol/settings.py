@@ -170,3 +170,6 @@ LOGGING = {
         },
     }
 }
+
+BACKEND_SERVER_IP = '127.0.0.1'
+BACKEND_SERVER_HTTP = 8090

@@ -21,7 +21,7 @@ function WSClient(url, debug) {
     this.datamsgcount_ack = 0;
 
     this.clientcmds = {
-        'CONNECT_RPI':'msp430_connect',
+        'CONNECT_MSP430':'msp430_connect',
         'ACK_DATA':'ack_data',
         'WRITE_DATA':'write_data'
     };
@@ -129,7 +129,7 @@ WSClient.prototype.ws_onerror = function(error) {
 
 WSClient.prototype.request_msp430_stream = function(msp430_mac) {
     msg = {
-        'cmd':this.clientcmds.CONNECT_RPI,
+        'cmd':this.clientcmds.CONNECT_MSP430,
         'msp430_mac':msp430_mac
     };
     if (this.debug) {
@@ -140,7 +140,7 @@ WSClient.prototype.request_msp430_stream = function(msp430_mac) {
     this.bound_msp430_mac = msp430_mac;
 };
 
-WSClient.prototype.unregister_rpi = function() {
+WSClient.prototype.unregister_msp430 = function() {
     this.bound_msp430_mac = null;
 };
 

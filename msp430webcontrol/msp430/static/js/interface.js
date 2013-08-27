@@ -63,7 +63,7 @@ Interface.prototype.createMSP430list = function(data) {
         (function(i, li, data){
             $(li).find('a').click(function(e) {
                 var context = {'domli':li, 'data':data[i]};
-                self.rpiClicked(context)
+                self.msp430Clicked(context)
                 e.preventDefault();
             });
         })(i, li, data, self);
@@ -74,9 +74,9 @@ Interface.prototype.createMSP430list = function(data) {
     return li_lst;
 };
 
-Interface.prototype.rpiClicked = function(context) {
+Interface.prototype.msp430Clicked = function(context) {
     // context is {'domli':li, 'data':data[i]}
-    if (this.rpi_menu_click) this.rpi_menu_click(context);
+    if (this.msp430_menu_click) this.msp430_menu_click(context);
 };
 
 Interface.prototype.getAjaxMenu = function() {
@@ -86,9 +86,9 @@ Interface.prototype.getAjaxMenu = function() {
     });
 };
 
-Interface.prototype.getAjaxDisplays = function(rpi_mac, callback) {
+Interface.prototype.getAjaxDisplays = function(msp430_mac, callback) {
     var self = this;
-    $.get('/displays/' + encodeURIComponent(rpi_mac),
+    $.get('/displays/' + encodeURIComponent(msp430_mac),
         function(data) {
             interface.cleanup();
             $('#displays_container').html(data);

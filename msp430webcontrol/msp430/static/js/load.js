@@ -8,7 +8,7 @@ $(document).ready(function() {
     interface.wsclient = client;
 
     interface.msp430_menu_click = function(context) {
-        client.unregister_rpi();
+        client.unregister_msp430();
         interface.getAjaxDisplays(context.data.mac, function(){
             client.request_msp430_stream(context.data.mac);
         });

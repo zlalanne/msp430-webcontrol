@@ -1,6 +1,7 @@
 from msp430.models import *
 from msp430webcontrol import settings
 import requests
+import socket
 import json
 
 read_display_cls = ReadDisplay.__subclasses__()
@@ -37,12 +38,19 @@ def push_config(msp430):
 
     data = {'json':requirements}
 
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((settings.BACKEND_SERVER_IP, settings.BACKEND_SERVER_HTTP))
+    s.send(json.dumps(data))
+    s.close()
+
+
     try:
-        headers = {'Content-type': 'application/json',
-                   'Accept': 'text/plain'}
-        response = requests.post("http://%s:%d" % settings.BACKEND_SERVER_IP,
-                                 settings.BACKEND_SERVER_HTTP, data=json.dumps(data),
-                                 headers=headers)
+   #     headers = {'Content-type': 'application/json',
+   #                'Accept': 'text/plain'}
+   #     response = requests.post("http://%s:%d" % (settings.BACKEND_SERVER_IP,
+   #                              settings.BACKEND_SERVER_HTTP), data=json.dumps(data),
+   #                              headers=headers)
+
         # TODO: Add some better checking to see if we acked correctly
         return True
     except:

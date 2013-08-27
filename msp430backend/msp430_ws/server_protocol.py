@@ -8,6 +8,8 @@ from autobahn.websocket import WebSocketServerFactory, WebSocketServerProtocol, 
 
 import settings
 import common_protocol
+import msp430_data.interface
+import msp430_data.utility
 
 class WebServerProtocol(protocol.Protocol):
 
@@ -58,11 +60,13 @@ class WebServerProtocol(protocol.Protocol):
         payload['ip'] = self.client.protocol.transport.getPeer().host
 
         data = {'json': payload}
-
-        headers = {'Content-type': 'application/json',
-                   'Accept': 'text/plain'}
-        response = requests.post("http://%s/tcp_comm/register/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
-                                 headers=headers)
+        try:
+            headers = {'Content-type': 'application/json',
+                       'Accept': 'text/plain'}
+            response = requests.post("http://%s/tcp_comm/register/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
+                                     headers=headers)
+        except:
+            pass
 
         # TODO: Need to validate response
 
@@ -361,6 +365,31 @@ class MSP430RegisterState(ServerState):
                 self.client.protocol.transport.write(common_protocol.ServerCommands.NACK)
 
         elif self.re_message_count == 1 and not self.registered:
+
+            def interface_desc(ifaces):
+                # List of classes that resemble I/O. Creating a struct based on
+                # their names, docstring, choices and I/O type to send to django
+                # application.
+                ret = []
+                for cls in ifaces:
+                    name = cls.__name__
+                    desc = msp430_data.utility.trim(cls.__doc__)
+                    choices = []
+                    for choice_key, choice_value in cls.IO_CHOICES:
+                        choice = {}
+                        choice['s'] = choice_key
+                        choice['d'] = choice_value
+                        choices.append(choice)
+
+                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+                return ret
+
+            self.client.iface = {}
+            self.client.interfaces = msp430_data.interface.get_interface_desc()
+            for key in self.client.interfaces.iterkeys():
+                self.client.iface[key] = interface_desc(self.client.interfaces[key])
+
+            print(self.client.iface)
 
             self.client.mac = data
             self.registered = True

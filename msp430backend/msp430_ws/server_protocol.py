@@ -425,6 +425,31 @@ class MSP430RegisterState(ServerState):
 
             print(self.client.iface)
 
+            def interface_desc(ifaces):
+                # List of classes that resemble I/O. Creating a struct based on
+                # their names, docstring, choices and I/O type to send to django
+                # application.
+                ret = []
+                for cls in ifaces:
+                    name = cls.__name__
+                    desc = msp430_data.utility.trim(cls.__doc__)
+                    choices = []
+                    for choice_key, choice_value in cls.IO_CHOICES:
+                        choice = {}
+                        choice['s'] = choice_key
+                        choice['d'] = choice_value
+                        choices.append(choice)
+
+                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+                return ret
+
+            self.client.iface = {}
+            self.client.interfaces = msp430_data.interface.get_interface_desc()
+            for key in self.client.interfaces.iterkeys():
+                self.client.iface[key] = interface_desc(self.client.interfaces[key])
+
+            print(self.client.iface)
+
             self.client.mac = data
             self.registered = True
             self.re_message_count = 0

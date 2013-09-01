@@ -1,5 +1,6 @@
 import requests
 import json
+import sys
 
 from twisted.internet.error import ConnectionDone
 from twisted.internet import protocol, threads, reactor
@@ -8,13 +9,15 @@ from autobahn.websocket import WebSocketServerFactory, WebSocketServerProtocol, 
 
 import settings
 import common_protocol
+import buffer
+import msp430_data.interface
+import msp430_data.utility
 
 class WebServerProtocol(protocol.Protocol):
 
     def __init__(self):
 
         self.client = None
-
 
     def dataReceived(self, data):
 
@@ -23,7 +26,9 @@ class WebServerProtocol(protocol.Protocol):
         if self.client is None:
             if self.debug:
                 log.msg("WebServerProtocol.dataReceived - No Client type")
-            # TODO: Add something there to kill the transport
+                # TODO: This is an untested way to kill the connection. Need
+                # to test.
+                self.transport.loseConnection()
         else:
             self.client.dataReceived(data)
 
@@ -39,9 +44,10 @@ class WebServerProtocol(protocol.Protocol):
 
     def connectionMade(self):
         if self.transport.getPeer().host == settings.SITE_SERVER:
-            print "Coming from same server"
+            log.msg("Coming from the web server")
+            self.client = WebServerClient(self)
         else:
-            print "Coming from an MSP430"
+            log.msg("Coming from an MSP430")
             self.client = MSP430Client(self)
 
         self.client.connectionMade()
@@ -57,13 +63,13 @@ class WebServerProtocol(protocol.Protocol):
         payload = {}
         payload['mac'] = self.client.mac
         payload['ip'] = self.client.protocol.transport.getPeer().host
+        payload['iface'] = self.client.iface
 
-        data = {'json':json.dumps(payload)}
-
+        data = {'json': payload}
         try:
             headers = {'Content-type': 'application/json',
                        'Accept': 'text/plain'}
-            response = requests.post("http://%s/tcp_comm/register" % SITE_SERVER_ADDRESS, data=json.dumps(data),
+            response = requests.post("http://%s/tcp_comm/register/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
                                      headers=headers)
         except:
             pass
@@ -77,11 +83,11 @@ class WebServerProtocol(protocol.Protocol):
         payload = {}
         payload['mac'] = self.client.mac
 
-        data = {'json':json.dumps(payload)}
+        data = {'json':payload}
         try:
             headers = {'Content-type': 'application/json',
                        'Accept': 'text/plain'}
-            response = requests.post("http://%s/tcp_comm/disconnect" % SITE_SERVER_ADDRESS, data=json.dumps(data),
+            response = requests.post("http://%s/tcp_comm/disconnect/" % settings.SITE_SERVER_ADDRESS, data=json.dumps(data),
                                      headers=headers)
         except:
             pass
@@ -89,6 +95,38 @@ class WebServerProtocol(protocol.Protocol):
         # Notify Browsers
         reactor.callFromThread(self.factory.ws_factory.disconnect_msp430_wsite, self)
 
+class WebServerClient(common_protocol.ProtocolState):
+
+    def __init__(self, protocol):
+        common_protocol.ProtocolState.__init__(self)
+        self.protocol = protocol
+
+    def connectionMade(self):
+        pass
+
+    def connectionLost(self, reason=ConnectionDone):
+        pass
+
+    def dataReceived(self, data):
+
+        data = data.strip()
+
+        try:
+            msp430s = json.loads(data)["json"]
+            log.msg(msp430s)
+            for msp430 in msp430s:
+                if self.protocol.factory.ws_factory.debug:
+                    log.msg('WebServerClient - Recieved config for MSP430 %s' % msp430['mac'])
+        except:
+            if self.protocol.factory.ws_factory.debug:
+                log.msg('WebServerClient - Error parsing msp430 configs %s' % sys.exc_info())
+            return 'error'
+
+        # Delegate the reqest to the WS factory
+        self.protocol.factory.ws_factory.config_msp430(msp430)
+
+        # TODO: Perhaps change this to a proper HTTP Response
+        return 'ok'
 
 class ServerState(common_protocol.State):
     def __init__(self, client):
@@ -134,16 +172,16 @@ class UserClient(WebSocketClient):
         self.paused = True
 
     def register_to_msp430(self, msp430_mac):
-        # notify factory we want to unregister if registered first
+        # Notify factory we want to unregister if registered first
         self.ackcount = 0
         if self.associated_msp430 is not None:
-            self.protocol.factory.unregister_user_to_rpi(self, self.associated_msp430)
-        rpi = self.protocol.factory.get_rpi(msp430_mac)
-        if rpi:
+            self.protocol.factory.unregister_user_to_msp430(self, self.associated_msp430)
+        msp430 = self.protocol.factory.get_msp430(msp430_mac)
+        if msp430:
             self.streaming_buffer_read = buffer.UpdateDict()
             self.streaming_buffer_write = buffer.UpdateDict()
-            self.associated_msp430 = rpi
-            self.protocol.factory.register_user_to_rpi(self, self.associated_msp430)
+            self.associated_msp430 = msp430
+            self.protocol.factory.register_user_to_msp430(self, self.associated_msp430)
             # begin streaming
             self.resume_streaming()
 
@@ -159,7 +197,7 @@ class UserClient(WebSocketClient):
             return
 
         # copy buffers
-        self.protocol.factory.copy_rpi_buffers(self.associated_msp430,
+        self.protocol.factory.copy_msp430_buffers(self.associated_msp430,
                                                self.streaming_buffer_read,
                                                self.streaming_buffer_write)
 
@@ -195,9 +233,9 @@ class UserClient(WebSocketClient):
                 log.msg('UserState.onMessage - JSON error, dropping')
             self.protocol.failConnection()
 
-        if msg['cmd'] == common_protocol.UserClientCommands.CONNECT_RPI:
+        if msg['cmd'] == common_protocol.UserClientCommands.CONNECT_MSP430:
             mac = msg['msp430_mac']
-            self.register_to_rpi(mac)
+            self.register_to_msp430(mac)
 
         elif msg['cmd'] == common_protocol.UserClientCommands.ACK_DATA:
             ackcount = msg['ack_count']
@@ -246,14 +284,10 @@ class MSP430Client(TCPClient):
         self.push_state(MSP430RegisterState(self))
 
     def connectionLost(self, reason=ConnectionDone):
-        # TODO: we might not want this because we might try and disconnect
-        # ourselves every time a packet ends
-
         # If we're registered remove ourselves from active client list
         if hasattr(self, 'mac'):
             self.protocol.factory.ws_factory.disconnect_msp430(self)
         pass
-
 
     def copy_buffers(self, read_buffer, write_buffer):
         try:
@@ -366,6 +400,56 @@ class MSP430RegisterState(ServerState):
 
         elif self.re_message_count == 1 and not self.registered:
 
+            def interface_desc(ifaces):
+                # List of classes that resemble I/O. Creating a struct based on
+                # their names, docstring, choices and I/O type to send to django
+                # application.
+                ret = []
+                for cls in ifaces:
+                    name = cls.__name__
+                    desc = msp430_data.utility.trim(cls.__doc__)
+                    choices = []
+                    for choice_key, choice_value in cls.IO_CHOICES:
+                        choice = {}
+                        choice['s'] = choice_key
+                        choice['d'] = choice_value
+                        choices.append(choice)
+
+                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+                return ret
+
+            self.client.iface = {}
+            self.client.interfaces = msp430_data.interface.get_interface_desc()
+            for key in self.client.interfaces.iterkeys():
+                self.client.iface[key] = interface_desc(self.client.interfaces[key])
+
+            print(self.client.iface)
+
+            def interface_desc(ifaces):
+                # List of classes that resemble I/O. Creating a struct based on
+                # their names, docstring, choices and I/O type to send to django
+                # application.
+                ret = []
+                for cls in ifaces:
+                    name = cls.__name__
+                    desc = msp430_data.utility.trim(cls.__doc__)
+                    choices = []
+                    for choice_key, choice_value in cls.IO_CHOICES:
+                        choice = {}
+                        choice['s'] = choice_key
+                        choice['d'] = choice_value
+                        choices.append(choice)
+
+                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+                return ret
+
+            self.client.iface = {}
+            self.client.interfaces = msp430_data.interface.get_interface_desc()
+            for key in self.client.interfaces.iterkeys():
+                self.client.iface[key] = interface_desc(self.client.interfaces[key])
+
+            print(self.client.iface)
+
             self.client.mac = data
             self.registered = True
             self.re_message_count = 0
@@ -384,24 +468,23 @@ class MSP430RegisterState(ServerState):
             return
 
 class MSP430ConfigState(ServerState):
-    """
-    In this state, the RPI is waiting to be configured.
-    Server is not required to configure the RPI immediately.
+    """In this state, the MSP430 is waiting to be configured.
+    Server is not required to configure the MSP430 immediately.
     """
     def __init__(self, client):
         super(MSP430ConfigState, self).__init__(client)
 
-    def onMessage(self, msg):
-        msg = json.loads(msg)
+    def dataReceived(self, data):
 
-        if msg['cmd'] == common_protocol.RPIClientCommands.CONFIG_OK:
-            self.client.push_state(RPIStreamState(self.client,
+        if data == common_protocol.MSP430ClientCommands.CONFIG_OK:
+            log.msg('MSP430ConfigState - MSP430 was configured')
+            self.client.push_state(MSP430StreamState(self.client,
                 reads=self.config_reads,
                 writes=self.config_writes
             ))
-        elif msg['cmd'] == common_protocol.RPIClientCommands.CONFIG_FAIL:
+        elif data == common_protocol.MSP430ClientCommands.CONFIG_FAIL:
             if self.client.protocol.debug:
-                log.msg('RPIConfigState - RPI failed to configure')
+                log.msg('MSP430ConfigState - MSP430 failed to configure')
             # TODO: Notify web server
 
     def config_io(self, reads, writes):
@@ -453,21 +536,23 @@ class MSP430ConfigState(ServerState):
         log.msg(self.config_writes)
 
         if self.client.protocol.debug:
-            log.msg('RPIConfigState - Pushing configs to remote RPI')
+            log.msg('MSP430ConfigState - Pushing configs to remote MSP430')
 
         msg = {'cmd':common_protocol.ServerCommands.CONFIG,
                'payload':{'read':self.config_reads, 'write':self.config_writes}}
 
-        self.client.protocol.sendMessage(json.dumps(msg))
+        self.client.protocol.transport.write(json.dumps(msg))
 
 
-class RPIStreamState(ServerState):
+class MSP430StreamState(ServerState):
     """ In this state the MSP430 has been configured and is streaming data"""
     def __init__(self, client, reads, writes):
-        super(RPIStreamState, self).__init__(client)
+        super(MSP430StreamState, self).__init__(client)
+
         # {'cls:ADC, port:3': {'cls_name':'ADC', 'ch_port':3, 'equations': ['zzzz', 'asdfadfad']}}
         self.config_reads = reads
         self.config_writes = writes
+
         self.read_data_buffer = {}
         self.read_data_buffer_eq = {}
         self.write_data_buffer = {}
@@ -485,25 +570,31 @@ class RPIStreamState(ServerState):
         return new_value
 
     def deactivated(self):
-        super(RPIStreamState, self).deactivated()
-        self.client.protocol.factory.notify_clients_rpi_state_change(self.client, state='drop_stream')
+        super(MSP430StreamState, self).deactivated()
+        self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='drop_stream')
 
     def activated(self):
-        super(RPIStreamState, self).deactivated()
-        self.client.protocol.factory.notify_clients_rpi_state_change(self.client, state='stream')
+        super(MSP430StreamState, self).activated()
+        self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='stream')
 
-    def onMessage(self, msg):
-        msg = json.loads(msg)
+    def dataReceived(self, data):
+        data = json.loads(data)
 
-        if msg['cmd'] == common_protocol.RPIClientCommands.DROP_TO_CONFIG_OK:
+        if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
             # order here is important, pop first!
             self.client.pop_state()
             self.client.current_state().config_io(self.delegate_config_reads, self.delegate_config_writes)
 
-        if msg['cmd'] == common_protocol.RPIClientCommands.DATA:
+        if data['cmd'] == common_protocol.MSP430ClientCommands.DATA:
+
+            log.msg(data)
+
             self.datamsgcount_ack += 1
-            read_data = msg['read']
-            write_data = msg['write']
+            read_data = data['read']
+            write_data = data['write']
+
+            log.msg(write_data)
+
             for key, value in read_data.iteritems():
                 self.read_data_buffer[key] = value
                 # perform equation operations here on values
@@ -518,14 +609,15 @@ class RPIStreamState(ServerState):
                         self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, value)
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
-                    pass
+                    log.msg("MSP430StreamState - Remote config invalid")
+
             if self.client.protocol.debug:
-                log.msg('RPIStreamState - EQs: %s' % str(self.read_data_buffer_eq))
+                log.msg('MSP430StreamState - EQs: %s' % str(self.read_data_buffer_eq))
             for key, value in write_data.iteritems():
-                # equations for write interfaces are applied on the returned value
-                # input value to interfaces are unchanged
+                # Equations for write interfaces are applied on the returned value
+                # Input value to interfaces are unchanged
                 self.write_data_buffer[key] = value
-                # key: 'cls:%s, port:%d, eq:%s'
+                # Key: 'cls:%s, port:%d, eq:%s'
                 if key in self.config_writes:
                     for eq in self.config_writes[key]['equations']:
                         new_key = 'cls:%s, port:%d, eq:%s' % (
@@ -540,35 +632,36 @@ class RPIStreamState(ServerState):
                         }
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
-                    pass
-            # notify factory to update listening clients
+                    log.msg("MSP430StreamState - Remote config invalid")
+
+            # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
-                msg = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
-                self.client.protocol.sendMessage(json.dumps(msg))
+                data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
+                self.client.protocol.sendMessage(json.dumps(data))
                 self.datamsgcount_ack = 0
             # notify factory of new data event
-            self.client.protocol.factory.rpi_new_data_event(self.client)
+            self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.RESUME_STREAMING}
-        self.client.protocol.sendMessage(json.dumps(msg))
+        self.client.protocol.transport.write(json.dumps(msg))
 
     def pause_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.PAUSE_STREAMING}
-        self.client.protocol.sendMessage(json.dumps(msg))
+        self.client.protocol.transport.write(json.dumps(msg))
 
     def write_interface_data(self, key, value):
-        # removes the EQ from the key sent by the client
+        # Removes the EQ from the key sent by the client
         config_key = self.write_data_eq_map[key]
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
                'iface_port':config_key,
                'value':value}
-        self.client.protocol.sendMessage(json.dumps(msg))
+        self.client.protocol.transport.write(json.dumps(msg))
 
     def drop_to_config(self, reads, writes):
-        # drop remote RPI to config state
+        # Drop remote MSP430 to config state
         msg = {'cmd':common_protocol.ServerCommands.DROP_TO_CONFIG}
-        self.client.protocol.sendMessage(json.dumps(msg))
+        self.client.protocol.transport.write(json.dumps(msg))
         self.delegate_config_reads = reads
         self.delegate_config_writes = writes
 
@@ -626,7 +719,7 @@ class MSP430ServerProtocol(WebSocketServerProtocol):
 
 
 class MSP430SocketServerFactory(WebSocketServerFactory):
-    """Manages every RPI connected to the server."""
+    """Manages every MSP430 connected to the server."""
 
     def __init__(self, *args, **kwargs):
 
@@ -643,14 +736,14 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         self.msp430_clients_registered_users = {}
 
     def register_user_to_msp430(self, client, msp430):
-        if len(self.msp430_clients_registered_users[rpi.mac]) == 0:
-            # RPI wasn't streaming, start streaming!
-            rpi.resume_streaming()
-        if client not in self.msp430_clients_registered_users[rpi.mac]:
-            self.msp430_clients_registered_users[rpi.mac].append(client)
+        if len(self.msp430_clients_registered_users[msp430.mac]) == 0:
+            # MSP430 wasn't streaming, start streaming!
+            msp430.resume_streaming()
+        if client not in self.msp430_clients_registered_users[msp430.mac]:
+            self.msp430_clients_registered_users[msp430.mac].append(client)
             if self.debug:
-                log.msg('MSP430SocketServerFactory.register_user_to_msp430 rpi:%s user:%s' %
-                        (rpi.mac, client.protocol.peerstr))
+                log.msg('MSP430SocketServerFactory.register_user_to_msp430 msp430:%s user:%s' %
+                        (msp430.mac, client.protocol.peerstr))
 
     def unregister_user_to_msp430(self, client, msp430):
         client.unregister_to_msp430()
@@ -666,13 +759,13 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
             # Pause streaming
             msp430.pause_streaming()
 
-    def rpi_new_data_event(self, msp430):
+    def msp430_new_data_event(self, msp430):
         # resume streaming on any RPIs waiting for new data
         for client in self.msp430_clients_registered_users[msp430.mac]:
             client.resume_streaming()
 
     def copy_msp430_buffers(self, msp430, read_buffer, write_buffer):
-        rpi.copy_buffers(read_buffer, write_buffer)
+        msp430.copy_buffers(read_buffer, write_buffer)
 
     def get_msp430(self, msp430_mac):
         if msp430_mac in self.msp430_clients:
@@ -743,5 +836,5 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         if mac not in self.msp430_clients:
             return False
 
-        rpi_client = self.msp430_clients[mac]
-        return rpi_client.config_io(reads=configs['read'], writes=configs['write'])
+        msp430_client = self.msp430_clients[mac]
+        return msp430_client.config_io(reads=configs['read'], writes=configs['write'])

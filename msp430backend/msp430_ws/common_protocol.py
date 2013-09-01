@@ -36,14 +36,14 @@ class ServerCommands(object):
 
     MSP430_STATE_CHANGE = 'msp430_schange'
 
-class RPIClientCommands(object):
+class MSP430ClientCommands(object):
     CONFIG_OK = 'c_ok'
     CONFIG_FAIL = 'c_fail'
     DROP_TO_CONFIG_OK = 'drop_to_config_ok'
     DATA = 'data'
 
 class UserClientCommands(object):
-    CONNECT_RPI = 'rpi_connect'
+    CONNECT_MSP430 = 'msp430_connect'
     ACK_DATA = 'ack_data'
     WRITE_DATA = 'write_data'
 

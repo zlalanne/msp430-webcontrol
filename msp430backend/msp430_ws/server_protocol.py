@@ -586,9 +586,15 @@ class MSP430StreamState(ServerState):
             self.client.current_state().config_io(self.delegate_config_reads, self.delegate_config_writes)
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DATA:
+
+            log.msg(data)
+
             self.datamsgcount_ack += 1
             read_data = data['read']
             write_data = data['write']
+
+            log.msg(write_data)
+
             for key, value in read_data.iteritems():
                 self.read_data_buffer[key] = value
                 # perform equation operations here on values
@@ -603,7 +609,8 @@ class MSP430StreamState(ServerState):
                         self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, value)
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
-                    pass
+                    log.msg("MSP430StreamState - Remote config invalid")
+
             if self.client.protocol.debug:
                 log.msg('MSP430StreamState - EQs: %s' % str(self.read_data_buffer_eq))
             for key, value in write_data.iteritems():
@@ -625,7 +632,7 @@ class MSP430StreamState(ServerState):
                         }
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
-                    pass
+                    log.msg("MSP430StreamState - Remote config invalid")
 
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
@@ -712,7 +719,7 @@ class MSP430ServerProtocol(WebSocketServerProtocol):
 
 
 class MSP430SocketServerFactory(WebSocketServerFactory):
-    """Manages every RPI connected to the server."""
+    """Manages every MSP430 connected to the server."""
 
     def __init__(self, *args, **kwargs):
 

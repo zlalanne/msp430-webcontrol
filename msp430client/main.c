@@ -27,6 +27,7 @@ unsigned char printOnce = 1;
 
 
 volatile long ulSocket;
+
 //*****************************************************************************
 //
 //! atoc
@@ -255,17 +256,24 @@ ascii_to_char(char b1, char b2)
 static void (*CurrentState)(void);
 
 static void configState(void){
-	__no_operation();
-	__delay_cycles(10);
-	__no_operation();
+
+	char rxBuffer[256];
+	int32_t status = 0;
+
+	do{
+		status = recv(ulSocket, rxBuffer, 256, 0);
+	} while(status == -1);
+
 }
 
 static void registerState(void){
 
-	static char txBuffer[64] = REGISTER;
+	char txBuffer[64] = REGISTER;
+	uint8_t mac[6];
 	uint16_t dataLength;
 	char rxBuffer[4];
 	int32_t status = 0;
+	uint8_t i;
 
 	sockaddr socketAddress;
 
@@ -301,10 +309,21 @@ static void registerState(void){
 	}
 
 	do {
-		status = nvmem_get_mac_address(txBuffer);
+		status = nvmem_get_mac_address(mac);
 	} while(status != 0);
 
-	dataLength = 6;
+	// Get the MAC address and convert to ASCII string
+	dataLength = 0;
+	for(i = 0; i < 6; i++){
+		status = sprintf(&txBuffer[dataLength], "%x", mac[i]);
+		dataLength += status;
+		txBuffer[dataLength] = ':';
+		dataLength++;
+	}
+
+	// Trim off the last ":"
+	dataLength--;
+
 	do {
 		status = send(ulSocket, txBuffer, dataLength, 0);
 	} while(status != dataLength);

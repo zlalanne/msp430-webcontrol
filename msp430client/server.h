@@ -12,10 +12,19 @@
 #define PORT_SECOND	0x9A
 
 // Commands used to interact with server
+#define CMD			"cmd"
 #define REGISTER	"reg"
+#define CONFIG 		"config"
+#define PAYLOAD		"payload"
+#define READ		"read"
+#define WRITE		"write"
+#define CONFIG_OK	"c_ok"
 
+// Responses from server
 #define ACK			"ack"
 #define NACK		"nack"
+
+
 
 
 #endif

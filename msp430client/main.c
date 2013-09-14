@@ -13,8 +13,10 @@
 #include "nvmem.h"
 
 #include "driverlib.h"
+#include "jsmn.h"
 
 #include "server.h"
+#include "server_protocol.h"
 
 volatile unsigned long ulSmartConfigFinished, ulCC3000Connected,ulCC3000DHCP,
 OkToDoShutDown, ulCC3000DHCP_configured;
@@ -108,8 +110,6 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length)
 	{
 		ulCC3000Connected = 1;
 
-		// Turn on the LED2
-		turnLedOn(LED2);
 	}
 
 	if (lEventType == HCI_EVNT_WLAN_UNSOL_DISCONNECT)
@@ -255,13 +255,47 @@ ascii_to_char(char b1, char b2)
 
 static void (*CurrentState)(void);
 
+static void streamState(void){
+
+	__no_operation();
+
+}
 static void configState(void){
 
 	char rxBuffer[256];
+	jsmn_parser jsonParser;
+	jsmntok_t tokens[128];
 	int32_t status = 0;
+	jsmnerr_t jsonStatus;
+	bool parseStatus;
+
+	jsmn_init(&jsonParser);
 
 	do{
 		status = recv(ulSocket, rxBuffer, 256, 0);
+
+		if(status != -1){
+
+			// Parse JSON
+			rxBuffer[status] = '\0';
+			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+			if(jsonStatus == JSMN_SUCCESS){
+				parseStatus = SERVER_parseConfig(rxBuffer, tokens);
+			}
+
+			if(parseStatus == true){
+				parseStatus = SERVER_setConfig(rxBuffer, tokens);
+			}
+
+			if(parseStatus == true){
+				do {
+					status = send(ulSocket, CONFIG_OK, 4, 0);
+				} while(status != 4);
+
+				CurrentState = streamState;
+			}
+		}
 	} while(status == -1);
 
 }
@@ -340,11 +374,14 @@ static void registerState(void){
 
 
 int main(void) {
-    WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
+    WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
 
     initHardware();
 
     wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL, (unsigned char*) PASSWORD, 10);
+
+	// Turn on the LED2
+	turnLedOn(LED2);
 
     while((ulCC3000Connected == 0) || (ulCC3000DHCP == 0));
 

@@ -132,5 +132,30 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 	P4OUT &= ~(BIT7);
 
 	return true;
+}
 
+bool SERVER_resumeStream(char *buffer, jsmntok_t *tokens) {
+
+	jsmntok_t key = tokens[1];
+
+	// Checking for 'cmd'
+	if(key.type == JSMN_STRING) {
+		if(checkString(buffer, &key, CMD, 3) == false) {
+			return false;
+		}
+	} else {
+		return false;
+	}
+
+	// Checking that the cmd is 'config'
+	key = tokens[2];
+	if(key.type == JSMN_STRING) {
+		if(checkString(buffer, &key, RESUME_STREAM, 8) == false) {
+			return false;
+		}
+	} else {
+		return false;
+	}
+
+	return true;
 }

@@ -230,8 +230,8 @@ static void initHardware(void) {
 	wlan_set_event_mask(HCI_EVNT_WLAN_KEEPALIVE|HCI_EVNT_WLAN_UNSOL_INIT|HCI_EVNT_WLAN_ASYNC_PING_REPORT);
 }
 
-static const char SSID[] =  "ZL15801";
-static const unsigned char PASSWORD[] = "15e9d02578";
+static const char SSID[] =  "MSP430";
+static const unsigned char PASSWORD[] = "";
 
 unsigned short
 atoshort(char b1, char b2)
@@ -271,6 +271,7 @@ static void configState(void){
 
 	jsmn_init(&jsonParser);
 
+	// Wait for configuration
 	do{
 		status = recv(ulSocket, rxBuffer, 256, 0);
 
@@ -297,6 +298,25 @@ static void configState(void){
 			}
 		}
 	} while(status == -1);
+
+	// Wait until resume streaming
+	do{
+		status = recv(ulSocket, rxBuffer, 256, 0);
+
+		// Parse JSON
+		rxBuffer[status] = '\0';
+		jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+		if(jsonStatus == JSMN_SUCCESS){
+			parseStatus = SERVER_resumeStream(rxBuffer, tokens);
+		}
+
+		if(parseStatus == false) {
+			status = -1;
+		}
+
+	} while(status == -1);
+
 
 }
 
@@ -378,7 +398,7 @@ int main(void) {
 
     initHardware();
 
-    wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL, (unsigned char*) PASSWORD, 10);
+    wlan_connect(WLAN_SEC_UNSEC, (char*) SSID, 6, NULL, (unsigned char*) PASSWORD, 0);
 
 	// Turn on the LED2
 	turnLedOn(LED2);

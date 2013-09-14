@@ -102,16 +102,25 @@ class IWrite(IBase):
 
 class GPIOOutput(IWrite):
     """Maps to GPIO write"""
+
+    """IO_TYPE is the type of choice the django application will give"""
     IO_TYPE = IBase.IO_TYPE_BINARY
+
+    """IO_OPCODE is the opcode used to tell the MSP430 the type of IO"""
+    IO_OPCODE = 2
+
+    """IO_CHOICES lists the choices for this type of IO. Ex:
+        (key, description, port, pin)
+    """
     IO_CHOICES = (
-        (1, 'P1.0'),
-        (2, 'P1.1'),
-        (3, 'P1.2'),
-        (4, 'P1.3'),
-        (5, 'P1.4'),
-        (6, 'P1.5'),
-        (7, 'P1.6'),
-        (8, 'P1.7'),
+        (1, 'P1.0', 1, 0),
+        (2, 'P1.1', 1, 1),
+        (3, 'P1.2', 1, 2),
+        (4, 'P1.3', 1, 3),
+        (5, 'P1.4', 1, 4),
+        (6, 'P1.5', 1, 5),
+        (7, 'P1.6', 1, 6),
+        (8, 'P1.7', 1, 7),
     )
     DEFAULT_VALUE = False
 

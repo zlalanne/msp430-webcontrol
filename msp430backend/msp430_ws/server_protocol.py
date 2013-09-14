@@ -409,7 +409,7 @@ class MSP430RegisterState(ServerState):
                     name = cls.__name__
                     desc = msp430_data.utility.trim(cls.__doc__)
                     choices = []
-                    for choice_key, choice_value in cls.IO_CHOICES:
+                    for choice_key, choice_value, choice_port, choice_pin in cls.IO_CHOICES:
                         choice = {}
                         choice['s'] = choice_key
                         choice['d'] = choice_value
@@ -422,33 +422,6 @@ class MSP430RegisterState(ServerState):
             self.client.interfaces = msp430_data.interface.get_interface_desc()
             for key in self.client.interfaces.iterkeys():
                 self.client.iface[key] = interface_desc(self.client.interfaces[key])
-
-            print(self.client.iface)
-
-            def interface_desc(ifaces):
-                # List of classes that resemble I/O. Creating a struct based on
-                # their names, docstring, choices and I/O type to send to django
-                # application.
-                ret = []
-                for cls in ifaces:
-                    name = cls.__name__
-                    desc = msp430_data.utility.trim(cls.__doc__)
-                    choices = []
-                    for choice_key, choice_value in cls.IO_CHOICES:
-                        choice = {}
-                        choice['s'] = choice_key
-                        choice['d'] = choice_value
-                        choices.append(choice)
-
-                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
-                return ret
-
-            self.client.iface = {}
-            self.client.interfaces = msp430_data.interface.get_interface_desc()
-            for key in self.client.interfaces.iterkeys():
-                self.client.iface[key] = interface_desc(self.client.interfaces[key])
-
-            print(self.client.iface)
 
             self.client.mac = data
             self.registered = True
@@ -511,21 +484,20 @@ class MSP430ConfigState(ServerState):
             # duplicate equations allowed, duplicate instances not allowed
             instanced_io_dict = {}
             for io in io_collection:
-                cls_str = io['cls_name']
-                ch_port = io['ch_port']
-                equation = io['equation']
 
-                key = 'cls:%s, port:%s' % (cls_str, ch_port)
-                if key not in instanced_io_dict:
-                    io_new_dict = {'cls_name':cls_str, 'ch_port':ch_port}
-                    io_new_dict['equations'] = [equation]
-                    instanced_io_dict[key] = io_new_dict
+                cls = getattr(msp430_data.interface, io['cls_name'])
+
+                for choice_key, choice_value, choice_port, choice_pin in cls.IO_CHOICES:
+                    if choice_key == io['ch_port']:
+                        key = choice_value
+                        break
                 else:
-                    # we can have more then one equation per instance
-                    existing_instance = instanced_io_dict[key]
-                    equations = existing_instance['equations']
-                    if equation not in equations:
-                        equations.append(equation)
+                    log.msg("Error parsing class")
+                    continue
+
+                if key not in instanced_io_dict:
+                    io_new_dict = {'port': choice_port, 'pin': choice_pin, 'type': cls.IO_OPCODE}
+                    instanced_io_dict[key] = io_new_dict
 
             return instanced_io_dict
 

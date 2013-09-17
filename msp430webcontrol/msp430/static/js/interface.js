@@ -1,12 +1,16 @@
 function Interface() {
-    this.menu_click = undefined;
+    this.rpi_menu_click = undefined;
+    this.wsclient = undefined;
 }
 
 Interface.prototype.notify = function(message, type, timeout) {
     var cls_type;
     switch (type) {
         case 'error':
-            cls_type = 'alert-error';
+            cls_type = 'alert-danger';
+            break;
+        case 'danger':
+            cls_type = 'alert-danger';
             break;
         case 'success':
             cls_type = 'alert-success';
@@ -14,8 +18,11 @@ Interface.prototype.notify = function(message, type, timeout) {
         case 'info':
             cls_type = 'alert-info';
             break;
+        case 'warning':
+            cls_type = 'alert-warning';
+            break;
         default:
-            cls_type = 'alert-error';
+            cls_type = 'alert-danger';
             break;
     }
 
@@ -24,7 +31,6 @@ Interface.prototype.notify = function(message, type, timeout) {
     html += message;
     html += '</div>';
     var newmsg = $(html);
-
     $('.messagecontainer').empty();
     $('.messagecontainer').append(newmsg);
 
@@ -35,30 +41,29 @@ Interface.prototype.notify = function(message, type, timeout) {
     }
 };
 
-/*
-Interface.prototype.createRpiList = function(data) {
+Interface.prototype.createMSP430list = function(data) {
     var self = this;
     var dropdownul = $('.nav > .dropdown > ul.dropdown-menu');
     dropdownul.empty();
 
     var li;
     var li_lst = [];
-    if (data.length === 0)
+    if (data.length == 0)
     {
-        li = $('<li><a href="#" class="offline_pi">No RPIs</a></li>');
+        li = $('<li><a href="#" class="offline_msp430">No MSP430s</a></li>');
         li_lst.push(li);
         dropdownul.append(li_lst);
-        return null;
+        return null
     }
 
     for (var i in data) {
         li = $('<li><a href="#">' + data[i]['name'] + '</a></li>');
         if (!data[i]['online'])
-            $(li).find('a').addClass('offline_pi');
+            $(li).find('a').addClass('offline_msp430');
         (function(i, li, data){
             $(li).find('a').click(function(e) {
                 var context = {'domli':li, 'data':data[i]};
-                self.rpiClicked(context);
+                self.msp430Clicked(context)
                 e.preventDefault();
             });
         })(i, li, data, self);
@@ -69,21 +74,21 @@ Interface.prototype.createRpiList = function(data) {
     return li_lst;
 };
 
-Interface.prototype.rpiClicked = function(context) {
+Interface.prototype.msp430Clicked = function(context) {
     // context is {'domli':li, 'data':data[i]}
-    if (this.menu_click) this.menu_click(context);
+    if (this.msp430_menu_click) this.msp430_menu_click(context);
 };
 
 Interface.prototype.getAjaxMenu = function() {
     var self = this;
-    $.getJSON('/user_api/rpis/', function(data){
-        self.menu = self.createRpiList(data);
+    $.getJSON('/user_api/msp430s/', function(data){
+        self.menu = self.createMSP430list(data);
     });
 };
 
-Interface.prototype.getAjaxDisplays = function(rpi_mac, callback) {
+Interface.prototype.getAjaxDisplays = function(msp430_mac, callback) {
     var self = this;
-    $.get('/displays/' + encodeURIComponent(rpi_mac),
+    $.get('/displays/' + encodeURIComponent(msp430_mac),
         function(data) {
             interface.cleanup();
             $('#displays_container').html(data);
@@ -120,5 +125,5 @@ Interface.prototype.cleanup = function() {
         }
     }
 };
-*/
+
 var interface = new Interface();

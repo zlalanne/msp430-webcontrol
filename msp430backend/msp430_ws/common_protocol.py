@@ -24,12 +24,12 @@ class State(object):
 
 class ServerCommands(object):
     AUTH = 'auth'
-    ACK = 'ack'
+    ACK = 'ack' 
     NACK = 'nack'
     CONFIG = 'config'
     DROP_TO_CONFIG = 'drop_to_config'
     ACK_DATA = 'ack_data'
-    RESUME_STREAMING = 'resume_s'
+    RESUME_STREAMING = 'resume'
     PAUSE_STREAMING = 'pause_s'
     WRITE_DATA = 'write_data'
     REGISTER = 'reg'

@@ -8,7 +8,8 @@
 
 //*****************************************************************************
 //
-// interface_digital.h - Digital I/O interface.
+// interface_digital.h - Digital Input interface and Digital Output interface.
+
 //
 //*****************************************************************************
 
@@ -26,8 +27,10 @@
 
 
 
-extern void interfaceDigitalInit(uint8_t pin, char* direction, char direction_length);
-extern void interfaceDigitalRead( uint8_t pin, char* input, char* input_length);
+extern void interfaceDigitalReadInit(uint8_t pin);
+extern uint16_t interfaceDigitalRead( uint8_t pin, char* input);
+
+extern void interfaceDigitalWriteInit(uint8_t pin);
 extern void interfaceDigitalWrite(uint8_t pin, char* output, char output_length);
 
 #endif /* INTERFACE_DIGITAL_H_ */

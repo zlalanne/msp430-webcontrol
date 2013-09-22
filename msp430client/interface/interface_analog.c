@@ -19,18 +19,18 @@
 
 
 
-void interfaceAnalogRead(uint8_t pin, char* input, char* input_length){
-    uint16_t value;
+uint16_t interfaceAnalogRead(uint8_t pin, char* input){
+    uint16_t value, input_length=0;
+
     value = analogRead(pin);
-    *input_length=0;
+
     input = "   ";
     //!TODO Need to change to a better itoa function
     //This is horrible code, ULP Advisor would disown you if you keep modulo & division in here
 
     while (value>0)
     {
-        input[*input_length] = '0' + value % 10;
-        *input_length = (*input_length) + 1;
+        input[input_length++] = '0' + value % 10;
         value /= 10;
 
     }

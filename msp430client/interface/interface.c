@@ -9,8 +9,10 @@
 #include "stdint.h"
 #include "interface_analog.h"
 #include "interface_digital.h"
-INTERFACE_generic digitalInterface;
-INTERFACE_generic analogInterface;
+INTERFACE_generic digitalReadInterface;
+INTERFACE_generic digitalWriteInterface;
+INTERFACE_generic analogReadInterface;
+INTERFACE_generic analogWriteInterface;
 
 uint16_t interfaceDecode(char *pin, uint16_t pinLength){
 
@@ -19,12 +21,16 @@ uint16_t interfaceDecode(char *pin, uint16_t pinLength){
 }
 
 void interfaceInitializeAll(){
-    digitalInterface.init = interfaceDigitalInit;
-    digitalInterface.read = interfaceDigitalRead;
-    digitalInterface.write = interfaceDigitalWrite;
+    digitalReadInterface.init = interfaceDigitalReadInit;
+    digitalReadInterface.read = interfaceDigitalRead;
 
+    digitalWriteInterface.init = interfaceDigitalWriteInit;
+    digitalWriteInterface.write = interfaceDigitalWrite;
 
-    analogInterface.read = interfaceAnalogRead;
-    analogInterface.write = interfaceAnalogWrite;
+    analogReadInterface.init = interfaceAnalogReadInit;
+    analogReadInterface.read = interfaceAnalogRead;
+
+    analogWriteInterface.init = interfaceAnalogWriteInit;
+    analogWriteInterface.write = interfaceAnalogWrite;
 
 }

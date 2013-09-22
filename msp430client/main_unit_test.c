@@ -34,8 +34,10 @@
 #include "Energia.h"
 
 INTERFACE_generic* interfaces[40];
-extern INTERFACE_generic digitalInterface;
-extern INTERFACE_generic analogInterface;
+extern INTERFACE_generic digitalReadInterface;
+extern INTERFACE_generic digitalWriteInterface;
+extern INTERFACE_generic analogReadInterface;
+extern INTERFACE_generic analogWriteInterface;
 
 static void initHardware(void) {
 
@@ -55,22 +57,22 @@ void main(void){
 
     initHardware();
     interfaceInitializeAll();
-    interfaces[0] = &digitalInterface;
-    interfaces[1] = &digitalInterface;
-    interfaces[2] = &analogInterface;
-    interfaces[3] = &analogInterface;
+    interfaces[0] = &digitaWritelInterface;
+    interfaces[1] = &digitalWriteInterface;
+    interfaces[2] = &analogReadInterface;
+    interfaces[3] = &analogReadInterface;
 
     // Test digital interfaces
-    interfaces[0]->init(GREEN_LED, "OUTPUT",6);
+    interfaces[0]->init(GREEN_LED);
     interfaces[0]->write(GREEN_LED, "HIGH",4);
-    interfaces[1]->init(RED_LED, "OUTPUT",6);
+    interfaces[1]->init(RED_LED);
     interfaces[0]->write(RED_LED, "HIGH",4);
 
     // Test analog interface
 
     while (1){
 
-        interfaces[2]->read(A10,buffer, &buffer_length);
+        buffer_length = interfaces[2]->read(A10,buffer);
         //!TODO: check if pin 19 is actually a PWM pin, verify functionality on a scope/LSA
         interfaces[3]->write(19,"123",3);
 
@@ -78,7 +80,7 @@ void main(void){
         interfaces[0]->write(GREEN_LED, "LOW", 4);
 
 
-        interfaces[2]->read(A10,buffer, &buffer_length);
+        buffer_length = interfaces[2]->read(A10,buffer);
         //!TODO: check if pin 19 is actually a PWM pin, verify functionality on a scope/LSA
         interfaces[3]->write(19,"500",3);
 

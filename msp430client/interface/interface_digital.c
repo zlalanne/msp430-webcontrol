@@ -16,35 +16,30 @@
 #include "stdlib.h"
 #include "string.h"
 
-void interfaceDigitalInit(uint8_t pin, char* direction, char direction_length){
-
-    if (direction_length==6)
-        if (strcmp(direction, "OUTPUT")==0)
-            pinMode( pin, OUTPUT);
-    if (direction_length==5)
-            if (strcmp(direction, "INTPUT")==0)
-                pinMode( pin, INPUT);
-    //!TODO: Exception handling
+void interfaceDigitalReadInit(uint8_t pin){
+    pinMode( pin, INPUT);
 }
 
 
 
-void interfaceDigitalRead( uint8_t pin, char* input, char* input_length){
+uint16_t interfaceDigitalRead( uint8_t pin, char* input, char* input_length){
     uint8_t value;
+    uint16_t input_length;
     value = digitalRead(pin);
     if (value == HIGH)
     {
-        input = "HIGH";
+        strncpy(input, "HIGH", 4);
         *input_length = 4;
     }
     else
     {
-        input = "LOW";
+        strncpy(input, "LOW", 3);
         *input_length = 3;
     }
+    return input_length;
 }
 void interfaceDigitalWrite(uint8_t pin, char* output, char output_length){
-    uint8_t value;
+
 
     if (output_length==3)
         if (strcmp(output, "LOW")==0)
@@ -54,6 +49,10 @@ void interfaceDigitalWrite(uint8_t pin, char* output, char output_length){
             digitalWrite( pin, HIGH);
     //!TODO: Exception handling
 
+}
+
+void interfaceDigitalWriteInit(uint8_t pin){
+    pinMode( pin, OUTPUT);
 }
 
 

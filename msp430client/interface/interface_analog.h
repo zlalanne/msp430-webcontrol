@@ -25,7 +25,7 @@
 //*****************************************************************************
 
 
-extern void interfaceAnalogRead(uint8_t pin, char* input, char* input_length);
+extern uint16_t interfaceAnalogRead(uint8_t pin, char* input);
 extern void interfaceAnalogWrite(uint8_t pin, char* output, char output_length);
 
 #endif /* INTERFACE_analog_H_ */

@@ -66,20 +66,20 @@ static const uint8_t AUX_UARTTXD = 4;  /* Transmit Data (TXD) at P4.4 */
 #define USE_USCI_A1
 #endif
 
-#define A0   0
-#define A1   1
-#define A2   2
-#define A3   3
-#define A4   4
-#define A5   5
-#define A6   6
-#define A7   7
-#define A10  10
-#define A11   11
-#define A12   12
-#define A13   13
-#define A14   14
-#define A15   15
+static const uint8_t A0  = 0;
+static const uint8_t A1  = 1;
+static const uint8_t A2  = 2;
+static const uint8_t A3  = 3;
+static const uint8_t A4  = 4;
+static const uint8_t A5  = 5;
+static const uint8_t A6  = 6;
+static const uint8_t A7  = 7;
+static const uint8_t A10 = 10; // special. This is the internal temp sensor
+static const uint8_t A11  = 11;
+static const uint8_t A12  = 12;
+static const uint8_t A13  = 13;
+static const uint8_t A14  = 14;
+static const uint8_t A15  = 15;
 
 /*
  F5529 LaunchPad pin mapping
@@ -110,62 +110,62 @@ static const uint8_t AUX_UARTTXD = 4;  /* Transmit Data (TXD) at P4.4 */
 /* Pin names based on the silkscreen */
 
 /* PIN1 = 3.3v */
-#define P6_5  2
-#define P3_4  3
-#define P3_3  4
-#define P1_6  5
-#define P6_6  6
-#define P3_2  7
-#define P2_7  8
-#define P4_2  9
-#define P4_1  10
+static const uint8_t P6_5 = 2;
+static const uint8_t P3_4 = 3;
+static const uint8_t P3_3 = 4;
+static const uint8_t P1_6 = 5;
+static const uint8_t P6_6 = 6;
+static const uint8_t P3_2 = 7;
+static const uint8_t P2_7 = 8;
+static const uint8_t P4_2 = 9;
+static const uint8_t P4_1 = 10;
 
-#define P8_1  11
-#define P2_3  12
-#define P2_6  13
-#define P3_1  14
-#define P3_0  15
+static const uint8_t P8_1 = 11;
+static const uint8_t P2_3 = 12;
+static const uint8_t P2_6 = 13;
+static const uint8_t P3_1 = 14;
+static const uint8_t P3_0 = 15;
 /* PIN16 is RST */
-#define P7_4  17
-#define P2_2  18
-#define P2_0  19
+static const uint8_t P7_4 = 17;
+static const uint8_t P2_2 = 18;
+static const uint8_t P2_0 = 19;
 /* PIN16 is GND */
 
 /* PIN21 is 5.0v */
 /* PIN22 is GND */
-#define P6_0  23
-#define P6_1  24
-#define P6_2  25
-#define P6_3  26
-#define P6_4  27
-#define P7_0  28
-#define P3_6  29
-#define P3_5  30
+static const uint8_t P6_0 = 23;
+static const uint8_t P6_1 = 24;
+static const uint8_t P6_2 = 25;
+static const uint8_t P6_3 = 26;
+static const uint8_t P6_4 = 27;
+static const uint8_t P7_0 = 28;
+static const uint8_t P3_6 = 29;
+static const uint8_t P3_5 = 30;
 
-#define P8_2  31
-#define P3_7  32
-#define P4_0  33
-#define P4_3  34
-#define P1_2  35
-#define P1_3  36
-#define P1_4  37
-#define P1_5  38
-#define P2_4  39
-#define P2_5  40
+static const uint8_t P8_2 = 31;
+static const uint8_t P3_7 = 32;
+static const uint8_t P4_0 = 33;
+static const uint8_t P4_3 = 34;
+static const uint8_t P1_2 = 35;
+static const uint8_t P1_3 = 36;
+static const uint8_t P1_4 = 37;
+static const uint8_t P1_5 = 38;
+static const uint8_t P2_4 = 39;
+static const uint8_t P2_5 = 40;
 
 /* Extra pins not on the header + temp sensor */
-#define P2_1  41
-#define P1_1  42
-#define P1_0  43
-#define P4_7  44
-#define P4_5  45
-#define P4_4  46
+static const uint8_t P2_1 = 41;
+static const uint8_t P1_1 = 42;
+static const uint8_t P1_0 = 43;
+static const uint8_t P4_7 = 44;
+static const uint8_t P4_5 = 45;
+static const uint8_t P4_4 = 46;
 
-#define PUSH1  41
-#define PUSH2  42
-#define RED_LED  43
-#define GREEN_LED  44
-#define TEMPSENSOR  10
+static const uint8_t PUSH1 = 41;
+static const uint8_t PUSH2 = 42;
+static const uint8_t RED_LED = 43;
+static const uint8_t GREEN_LED = 44;
+static const uint8_t TEMPSENSOR = 10;
 
 #ifdef ARDUINO_MAIN
 

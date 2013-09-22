@@ -14,6 +14,8 @@
 #ifndef INTERFACE_H_
 #define INTERFACE_H_
 #include "stdint.h"
+
+#define NUMBER_OF_INTERFACES    39
 //*****************************************************************************
 //
 //! \typedef INTERFACE_generic
@@ -26,13 +28,22 @@
 //*****************************************************************************
 typedef struct _INTERFACE_generic
 {
-    void (*init)(uint8_t pin, char* direction, char direction_length);
-    void (*read)(uint8_t pin, char* input, char* input_length);
+    void (*init)(uint8_t pin);
+    uint16_t (*read)(uint8_t pin, char* input);
     void (*write)(uint8_t pin, char* output, char output_length);
-
+    uint16_t (*decode)(char* pinStr, uint8_t pin_length);
 } INTERFACE_generic;
 
 
-extern uint16_t interfaceDecode(char *pin, uint16_t pinLength);
+typedef struct _INTERFACE_name
+{
+   char* interfaceName;
+  int8_t interfaceName_length;
+  uint8_t interfaceNumber;
+} INTERFACE_name;
+
+
+extern uint16_t interfaceDecode(char *pinStr, uint8_t pinLength);
+extern void dummyAPI(void);
 extern void interfaceInitializeAll();
 #endif /* INTERFACE_H_ */

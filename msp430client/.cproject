@@ -92,7 +92,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="main.c|main_unit_test.c|energia/HardwareSerial.cpp|energia/new.cpp|energia/main.cpp|cc3000/Basic Wifi Application/basic_wifi_application.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="main.c|energia/new.cpp|energia/main.cpp|cc3000/Basic Wifi Application/basic_wifi_application.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

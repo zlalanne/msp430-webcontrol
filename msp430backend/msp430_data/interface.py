@@ -113,8 +113,8 @@ class GPIOOutput(IWrite):
         (key, description, pin)
     """
     IO_CHOICES = (
-        (1, 'LED1', "LED1"),
-        (2, 'LED2', "LED2"),
+        (1, 'GREEN_LED', "GREENLED"),
+        (2, 'RED_LED', "REDLED"),
         (3, 'P8.2', "31"),
     )
     DEFAULT_VALUE = False

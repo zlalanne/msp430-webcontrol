@@ -296,10 +296,31 @@ class MSP430Client(TCPClient):
             # MSP430 has no states
             return False
         if isinstance(state, MSP430StreamState):
+
+            log.msg(state.interfaces_buffer)
+
+            for key, value in state.interfaces_buffer.iteritems():
+                
+                cls_name, port = key.split(":")
+                cls = getattr(msp430_data.interface, cls_name)
+                # TODO: This is hard-coded for now
+                key = "cls:%s, port:%d, eq:" % (cls_name, 1)
+                #key = 'cls:%s, port:%d, eq:%s' % (cls_name, port, '')
+                
+                if msp430_data.interface.IWrite in cls.__bases__:
+                    write_buffer[key] = value
+                elif msp430_data.interface.IRead in cls.__bases__:
+                    read_buffer[key] = value
+
+            log.msg("MSP430Client.copy_buffers write=%s read=%s" % (write_buffer, read_buffer))
+
+            # TODO: Change this to read from evaluated equations
+            """
             for key, value in state.read_data_buffer_eq.iteritems():
                 read_buffer[key] = value
             for key, value in state.write_data_buffer_eq.iteritems():
                 write_buffer[key] = value
+            """
 
             return True
         return False
@@ -452,7 +473,7 @@ class MSP430ConfigState(ServerState):
         if data == common_protocol.MSP430ClientCommands.CONFIG_OK:
             log.msg('MSP430ConfigState - MSP430 was configured')
             self.client.push_state(MSP430StreamState(self.client,
-                interfaces=self.interfaces
+                interfaces=self.config_interfaces
             ))
         elif data == common_protocol.MSP430ClientCommands.CONFIG_FAIL:
             if self.client.protocol.debug:
@@ -500,14 +521,14 @@ class MSP430ConfigState(ServerState):
 
             return instanced_io_dict
 
-        self.interfaces = format_io(reads + writes)
-        log.msg(self.interfaces)
+        self.config_interfaces = format_io(reads + writes)
+        log.msg(self.config_interfaces)
 
         if self.client.protocol.debug:
             log.msg('MSP430ConfigState - Pushing configs to remote MSP430')
 
         msg = {'cmd':common_protocol.ServerCommands.CONFIG,
-               'payload':self.interfaces}
+               'payload':self.config_interfaces}
 
         self.client.protocol.transport.write(json.dumps(msg))
 
@@ -525,6 +546,7 @@ class MSP430StreamState(ServerState):
         self.write_data_buffer = {}
         self.write_data_buffer_eq = {}
         self.write_data_eq_map = {}
+        self.interfaces_buffer = {}
         self.datamsgcount_ack = 0
 
     def evaluate_eq(self, eq, value):
@@ -559,8 +581,15 @@ class MSP430StreamState(ServerState):
             self.datamsgcount_ack += 1
             interfaces = data['interfaces']
    
-            log.msg(interfaces)
+            # Need to change this to perform equations
+            for key, value in interfaces.iteritems():
+                if value == "HIGH":
+                    self.interfaces_buffer[key] = True
+                elif value == "LOW":
+                    self.interfaces_buffer[key] = False
 
+            # Ignoring the equations for now
+            """
             for key, value in interfaces.iteritems():
                 self.read_data_buffer[key] = value
                 # perform equation operations here on values
@@ -599,13 +628,14 @@ class MSP430StreamState(ServerState):
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
                     log.msg("MSP430StreamState - Remote config invalid")
-
+            """
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
                 data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
-                self.client.protocol.sendMessage(json.dumps(data))
+                #self.client.protocol.transport.write(json.dumps(data))
                 self.datamsgcount_ack = 0
-            # notify factory of new data event
+
+            # Notify factory of new data event
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
@@ -726,7 +756,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
             msp430.pause_streaming()
 
     def msp430_new_data_event(self, msp430):
-        # resume streaming on any RPIs waiting for new data
+        # resume streaming on any MSP430s waiting for new data
         for client in self.msp430_clients_registered_users[msp430.mac]:
             client.resume_streaming()
 

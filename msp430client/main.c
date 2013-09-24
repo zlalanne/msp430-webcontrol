@@ -17,11 +17,14 @@
 
 #include "server.h"
 #include "server_protocol.h"
+#include "interface.h"
 
 volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
 		OkToDoShutDown, ulCC3000DHCP_configured;
 
 volatile unsigned char ucStopSmartConfig;
+
+bool StartSample = false;
 
 unsigned char printOnce = 1;
 
@@ -200,6 +203,23 @@ static void initHardware(void) {
 	wlan_set_event_mask(
 			HCI_EVNT_WLAN_KEEPALIVE | HCI_EVNT_WLAN_UNSOL_INIT
 					| HCI_EVNT_WLAN_ASYNC_PING_REPORT);
+
+}
+
+/**
+ * System Tick Initialization. Fires a timer interrupt at 10Hz (every 100ms) to start sampling
+ */
+static void systickInit(void) {
+
+    // Configure Timer
+    // Set to 10Hz counter (ACLK/8 = 32768/8 = 4096)  (4096/10 ~= 410)
+    TIMER_A_configureUpMode(SYSTICK_BASE,
+    	TIMER_A_CLOCKSOURCE_ACLK,
+    	TIMER_A_CLOCKSOURCE_DIVIDER_8,
+    	409,
+    	TIMER_A_TAIE_INTERRUPT_ENABLE,
+    	TIMER_A_CAPTURECOMPARE_INTERRUPT_DISABLE,
+        TIMER_A_DO_CLEAR);
 }
 
 unsigned short atoshort(char b1, char b2) {
@@ -225,14 +245,12 @@ static void streamState(void) {
 	int32_t status = 0;
 	char rxBuffer[256];
 
-	// Streaming
-	do {
-		status = recv(ulSocket, rxBuffer, 256, 0);
-
-	} while (status == -1);
-
-	__no_operation();
-
+	// Waiting for new data or configuration
+	status = recv(ulSocket, rxBuffer, 256, 0);
+	if(status != -1) {
+		// Handle the data
+		__no_operation();
+	}
 }
 static void configState(void) {
 
@@ -276,6 +294,11 @@ static void configState(void) {
 
 				SERVER_initInterfaces();
 				CurrentState = streamState;
+
+				// Start Timer
+				TIMER_A_clear(SYSTICK_BASE);
+			    TIMER_A_startCounter(SYSTICK_BASE,
+					TIMER_A_UP_MODE);
 			} else {
 				status = -1;
 			}
@@ -369,10 +392,46 @@ static void registerState(void) {
 	}
 }
 
+#pragma vector = SYSTICK_VECTOR
+__interrupt void SYSTICK(void) {
+	switch (__even_in_range(TA0IV, 0x0E)) {
+	case 0x02:
+		break; // Vector 0x0: CCR1
+	case 0x04:
+		break; // Vector 0x02: CCR2
+	case 0x06:
+		break; // Vector 0x04: CCR3
+	case 0x08:
+		break; // Vector 0x06: CCR4
+	case 0x0A:
+		break; // Vector 0x08: CCR5
+	case 0x0C:
+		break; // Vector 0x0A: CCR6
+	case 0x0E: // Vector 0x0E: TAxCTL TAIFG
+		StartSample = true; // Set the system tick flag
+		__bic_SR_register_on_exit(LPM4_bits);
+		// Exit LPM on exit
+		break;
+	default:
+		break;
+	}
+}
+
 int main(void) {
+
+	char data[MAX_DATA] = DATA_HEADER;
+	uint16_t dataLength;
+	int32_t status = 0;
+
+	// Timeout for receive in ms
+	int32_t timeout = 100;
+
 	WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
 
+    interfaceInitializeAll();
+
 	initHardware();
+	systickInit();
 
 	wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL,
 			(unsigned char*) PASSWORD, 10);
@@ -383,10 +442,28 @@ int main(void) {
 		ulSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	} while (ulSocket == -1);
 
+	do {
+		status = setsockopt(ulSocket, SOL_SOCKET, SOCKOPT_RECV_TIMEOUT, &timeout, sizeof(timeout));
+	} while(status == -1);
+
 	CurrentState = registerState;
 
 	while (1) {
 		CurrentState();
+		if((CurrentState == &streamState) &&  (StartSample == true)) {
+
+			// Start the sample
+			StartSample = false;
+			dataLength = SERVER_sendData(data);
+
+			// Send the data
+			do {
+				status = send(ulSocket, data, dataLength, 0);
+			} while (status != dataLength);
+
+			// Heartbeat for sending messages
+			P1OUT ^= BIT0;
+		}
 	}
 }
 

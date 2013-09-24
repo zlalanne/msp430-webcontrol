@@ -1,4 +1,5 @@
 #include "server.h"
+#include "interface.h"
 
 #include "jsmn.h"
 
@@ -7,6 +8,9 @@
 #include <stdbool.h>
 #include <string.h>
 
+INTERFACE_generic* interfaces[40];
+
+
 typedef struct {
 	char name[MAX_NAME];
 	uint8_t nameLength;
@@ -14,8 +18,8 @@ typedef struct {
 	uint16_t pin;
 } config_t;
 
-config_t Interfaces[MAX_INTERFACES];
-uint8_t CurrentInterfaces = 0;
+config_t Configs[MAX_CONFIGS];
+uint8_t CurrentConfigs = 0;
 
 
 static uint8_t decodeOpcode(char *opcode, uint8_t opcodeLength) {
@@ -93,6 +97,12 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 	char pin[MAX_PIN];
 	char opcodeStr[MAX_OPCODE];
 
+	// Need to move this away from here
+    interfaces[0] = &digitalWriteInterface;
+    interfaces[1] = &digitalReadInterface;
+    interfaces[2] = &analogReadInterface;
+    interfaces[3] = &analogWriteInterface;
+
 	// Checking for 'payload'
 	if(checkString(buffer, &key, PAYLOAD, 7) == false) {
 		return false;
@@ -104,10 +114,10 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 	}
 
 	// Reset the number of configurations
-	CurrentInterfaces = 0;
+	CurrentConfigs = 0;
 
 	// Make sure there is a configuration to parse
-	if((key.end - key.start) <= 1) {
+	if((key.end - key.start) <= 2) {
 		return true;
 	}
 	end = key.end;
@@ -144,7 +154,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 			} else {
 
 				// Failed second decode
-				CurrentInterfaces = 0;
+				CurrentConfigs = 0;
 				return false;
 			}
 
@@ -171,33 +181,28 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 			} else {
 
 				// Failed second decode
-				CurrentInterfaces = 0;
+				CurrentConfigs = 0;
 				return false;
 			}
 
 		} else {
 
 			// Failed first decode
-			CurrentInterfaces = 0;
+			CurrentConfigs = 0;
 			return false;
 		}
 
 		opcode = decodeOpcode(opcodeStr, opcodeLength);
 
-		Interfaces[CurrentInterfaces].nameLength = nameKey.end - nameKey.start;
-		memcpy(Interfaces[CurrentInterfaces].name, &buffer[nameKey.start],
-			   Interfaces[CurrentInterfaces].nameLength);
+		Configs[CurrentConfigs].nameLength = nameKey.end - nameKey.start;
+		memcpy(Configs[CurrentConfigs].name, &buffer[nameKey.start],
+			   Configs[CurrentConfigs].nameLength);
+		Configs[CurrentConfigs].opcode = opcode;
+		Configs[CurrentConfigs].pin = interfaces[opcode]->decode(pin, pinLength);
 
-		Interfaces[CurrentInterfaces].opcode = opcode;
-		Interfaces[CurrentInterfaces].pin = pinLength;
-
-		CurrentInterfaces++;
+		CurrentConfigs++;
 
 	} while((key.end + 3) != end);
-
-	// TODO: Remove for real configuration
-	P4DIR |= BIT7;
-	P4OUT &= ~(BIT7);
 
 	return true;
 }
@@ -220,12 +225,44 @@ bool SERVER_resumeStream(char *buffer, jsmntok_t *tokens) {
 	return true;
 }
 
+uint16_t SERVER_sendData(char *data) {
+
+	uint8_t i;
+	uint16_t currentIndex = DATA_HEADER_LEN;
+	uint16_t dataLength;
+
+	for(i = 0; i < CurrentConfigs; i++) {
+
+		// Writing the name of the configuration
+		data[currentIndex++] = '"';
+		memcpy(&data[currentIndex], Configs[i].name, Configs[i].nameLength);
+		currentIndex += Configs[i].nameLength;
+		data[currentIndex++] = '"';
+		data[currentIndex++] = ':';
+
+		// Writing the data for the configuration
+		data[currentIndex++] = '"';
+		dataLength = interfaces[Configs[i].opcode]->read(Configs[i].pin, &data[currentIndex]);
+		currentIndex += dataLength;
+		data[currentIndex++] = '"';
+
+		// Separating the configuration
+		data[currentIndex++] = ',';
+	}
+
+	// Take off the last ,
+	currentIndex--;
+	memcpy(&data[currentIndex], DATA_FOOTER, DATA_FOOTER_LEN);
+	currentIndex += DATA_FOOTER_LEN;
+
+	return currentIndex;
+}
+
 void SERVER_initInterfaces(void) {
 
 	uint8_t i;
 
-	for(i = 0; i < CurrentInterfaces; i++) {
-
-		//Interfaces[Configs[i].opcode].init(Configs[i].pin, Configs[i].pinLength)
+	for(i = 0; i < CurrentConfigs; i++) {
+		interfaces[Configs[i].opcode]->init(Configs[i].pin);
 	}
 }

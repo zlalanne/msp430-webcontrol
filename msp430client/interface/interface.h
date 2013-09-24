@@ -43,6 +43,11 @@ typedef struct _INTERFACE_name
 } INTERFACE_name;
 
 
+extern INTERFACE_generic digitalReadInterface;
+extern INTERFACE_generic digitalWriteInterface;
+extern INTERFACE_generic analogReadInterface;
+extern INTERFACE_generic analogWriteInterface;
+
 extern uint16_t interfaceDecode(char *pinStr, uint8_t pinLength);
 extern void dummyAPI(void);
 extern void interfaceInitializeAll();

@@ -31,7 +31,8 @@ extern void interfaceDigitalReadInit(uint8_t pin);
 extern uint16_t interfaceDigitalRead( uint8_t pin, char* input);
 
 extern void interfaceDigitalWriteInit(uint8_t pin);
-extern void interfaceDigitalWrite(uint8_t pin, char* output, char output_length);
+extern void interfaceDigitalOutputWrite(uint8_t pin, char* output, char output_length);
+extern uint16_t interfaceDigitalOutputRead( uint8_t pin, char* input);
 
 #endif /* INTERFACE_DIGITAL_H_ */
 

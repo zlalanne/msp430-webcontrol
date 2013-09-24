@@ -17,7 +17,6 @@ INTERFACE_generic digitalWriteInterface;
 INTERFACE_generic analogReadInterface;
 INTERFACE_generic analogWriteInterface;
 
-
 extern INTERFACE_name boardInterfaceNames[];
 
 uint16_t interfaceDecode(char *pin, uint8_t pinLength){
@@ -43,8 +42,8 @@ void interfaceInitializeAll(){
     digitalReadInterface.decode = interfaceDecode;
 
     digitalWriteInterface.init = interfaceDigitalWriteInit;
-    digitalWriteInterface.read = dummyAPI;
-    digitalWriteInterface.write = interfaceDigitalWrite;
+    digitalWriteInterface.read = interfaceDigitalOutputRead;
+    digitalWriteInterface.write = interfaceDigitalOutputWrite;
     digitalWriteInterface.decode = interfaceDecode;
 
     analogReadInterface.init = dummyAPI;

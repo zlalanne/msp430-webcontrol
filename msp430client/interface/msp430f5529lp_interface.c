@@ -21,8 +21,8 @@
  const INTERFACE_name boardInterfaceNames[NUMBER_OF_INTERFACES] =
 {
         // Default on-board interfaces
-        {"GREEN_LED", 9, GREEN_LED},
-        {"RED_LED", 7, RED_LED},
+        {"GREENLED", 8, GREEN_LED},
+        {"REDLED", 6, RED_LED},
         {"TEMPSENSOR", 10, A10},
         {"BATTERY", 7, A11},
         {"PUSH1", 5, PUSH1},

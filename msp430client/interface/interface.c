@@ -6,20 +6,24 @@
  */
 
 #include "interface.h"
-#include "stdint.h"
 #include "interface_analog.h"
 #include "interface_digital.h"
 
-#include "string.h"
+// Include interface for selected board
+#ifdef __MSP430F5529__
+#include "msp430f5529lp_interface.h"
+#endif
 
-INTERFACE_generic digitalReadInterface;
-INTERFACE_generic digitalWriteInterface;
-INTERFACE_generic analogReadInterface;
-INTERFACE_generic analogWriteInterface;
+#include <stdint.h>
+#include <string.h>
 
-extern INTERFACE_name boardInterfaceNames[];
-
-uint16_t interfaceDecode(char *pin, uint8_t pinLength){
+/**
+ * Used to decode the pin string to a pin number
+ * @param pin string containing the pin
+ * @param pinLength length of the string
+ * @return the integer mapping of the pin
+ */
+static uint16_t interfaceDecode(char *pin, uint8_t pinLength){
     uint8_t i;
     for (i=0;i < NUMBER_OF_INTERFACES; i++)
     {
@@ -27,32 +31,59 @@ uint16_t interfaceDecode(char *pin, uint8_t pinLength){
             return boardInterfaceNames[i].interfaceNumber;
     }
     return 0xFFFF;
+}
 
+// Dummy functions to get rid of compiler warnings. These functions
+// can be used when an interface does not need to implement certain
+// functions
+static void dummyInit(uint8_t pin) {
+}
+
+uint16_t dummyRead(uint8_t pin, char *input) {
+	return 0;
+}
+
+void dummyWrite(uint8_t pin, char *output, char output_length) {
 
 }
 
-void dummyAPI(void){
 
-}
+const genericInterface_t digitalReadInterface = {
+		interfaceDigitalReadInit,
+		interfaceDigitalRead,
+		dummyWrite,
+		interfaceDecode
+};
 
-void interfaceInitializeAll(){
-    digitalReadInterface.init = interfaceDigitalReadInit;
-    digitalReadInterface.read = interfaceDigitalRead;
-    digitalReadInterface.write = dummyAPI;
-    digitalReadInterface.decode = interfaceDecode;
+const genericInterface_t digitalOutputInterface = {
+		interfaceDigitalOutputInit,
+		interfaceDigitalOutputRead,
+		interfaceDigitalOutputWrite,
+		interfaceDecode
+};
 
-    digitalWriteInterface.init = interfaceDigitalWriteInit;
-    digitalWriteInterface.read = interfaceDigitalOutputRead;
-    digitalWriteInterface.write = interfaceDigitalOutputWrite;
-    digitalWriteInterface.decode = interfaceDecode;
+const genericInterface_t analogReadInterface = {
+		dummyInit,
+		interfaceAnalogRead,
+		dummyWrite,
+		interfaceDecode
+};
 
-    analogReadInterface.init = dummyAPI;
-    analogReadInterface.read = interfaceAnalogRead;
-    analogReadInterface.write = dummyAPI;
-    analogReadInterface.decode = interfaceDecode;
+const genericInterface_t analogWriteInterface = {
+		dummyInit,
+		dummyRead,
+	    interfaceAnalogWrite,
+	    interfaceDecode
+};
 
-    analogWriteInterface.init = dummyAPI;
-    analogWriteInterface.read = dummyAPI;
-    analogWriteInterface.write = interfaceAnalogWrite;
-    analogWriteInterface.decode = interfaceDecode;
-}
+/**
+ * Holds the list of interfaces. The index of this
+ * array corresponds to the opcode when communicating
+ * with the server.
+ */
+const genericInterface_t* INTERFACE_list[] = {
+		&digitalOutputInterface,
+		&digitalReadInterface,
+		&analogReadInterface,
+		&analogWriteInterface
+};

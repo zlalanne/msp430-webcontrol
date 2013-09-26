@@ -46,12 +46,11 @@ volatile long ulSocket;
 unsigned char atoc(char data) {
 	unsigned char ucRes;
 
-	if ((data >= 0x30) && (data <= 0x39)) {
-		ucRes = data - 0x30;
+	if ((data >= '0') && (data <= '9')) {
+		ucRes = data - '0';
 	} else {
 		if (data == 'a') {
 			ucRes = 0x0a;
-			;
 		} else if (data == 'b') {
 			ucRes = 0x0b;
 		} else if (data == 'c') {
@@ -64,7 +63,6 @@ unsigned char atoc(char data) {
 			ucRes = 0x0f;
 		}
 	}
-
 	return ucRes;
 }
 
@@ -145,7 +143,7 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 //!         since there is no patch in the host - it returns 0
 //
 //*****************************************************************************
-char *sendDriverPatch(unsigned long *Length) {
+static char *sendDriverPatch(unsigned long *Length) {
 	*Length = 0;
 	return NULL;
 }
@@ -162,7 +160,7 @@ char *sendDriverPatch(unsigned long *Length) {
 //!         since there is no patch in the host - it returns 0
 //
 //*****************************************************************************
-char *sendBootLoaderPatch(unsigned long *Length) {
+static char *sendBootLoaderPatch(unsigned long *Length) {
 	*Length = 0;
 	return NULL;
 }
@@ -179,8 +177,7 @@ char *sendBootLoaderPatch(unsigned long *Length) {
 //!         since there is no patch in the host - it returns 0
 //
 //*****************************************************************************
-
-char *sendWLFWPatch(unsigned long *Length) {
+static char *sendWLFWPatch(unsigned long *Length) {
 	*Length = 0;
 	return NULL;
 }
@@ -244,12 +241,35 @@ static void streamState(void) {
 
 	int32_t status = 0;
 	char rxBuffer[256];
+	jsmntok_t tokens[128];
+	jsmn_parser jsonParser;
+	jsmnerr_t jsonStatus;
 
 	// Waiting for new data or configuration
 	status = recv(ulSocket, rxBuffer, 256, 0);
-	if(status != -1) {
-		// Handle the data
-		__no_operation();
+	if(status > 0) {
+
+		// Parse JSON
+		jsmn_init(&jsonParser);
+		rxBuffer[status] = '\0';
+		jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+		if(jsonStatus == JSMN_SUCCESS) {
+
+			// Determine command
+			switch(SERVER_parseStreamData(rxBuffer, tokens)) {
+			case 'a':
+				// Data ACK - Not implemented
+				break;
+			case 'w':
+				// Write Data
+				SERVER_writeData(rxBuffer, tokens);
+				break;
+			case 'd':
+				// Drop to config state - Not implemented
+				break;
+			}
+		}
 	}
 }
 static void configState(void) {
@@ -428,8 +448,6 @@ int main(void) {
 
 	WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
 
-    interfaceInitializeAll();
-
 	initHardware();
 	systickInit();
 
@@ -450,6 +468,7 @@ int main(void) {
 
 	while (1) {
 		CurrentState();
+
 		if((CurrentState == &streamState) &&  (StartSample == true)) {
 
 			// Start the sample

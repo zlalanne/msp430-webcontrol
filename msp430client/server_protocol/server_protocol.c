@@ -8,9 +8,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-INTERFACE_generic* interfaces[40];
-
-
 typedef struct {
 	char name[MAX_NAME];
 	uint8_t nameLength;
@@ -47,7 +44,7 @@ static bool checkString(char *jsonBuffer, jsmntok_t *jsonToken, const char *expe
 		}
 
 		memcpy(tokenBuffer, &jsonBuffer[jsonToken->start], length);
-		if(strncmp(expectedString, tokenBuffer, length) != 0) {
+		if(memcmp(expectedString, tokenBuffer, length) != 0) {
 			return false;
 		} else {
 			return true;
@@ -60,10 +57,10 @@ static bool checkString(char *jsonBuffer, jsmntok_t *jsonToken, const char *expe
 }
 
 /**
- * Parse json hoping for a confugration.
+ * Parse json hoping for a configuration.
  *
  * @param buffer Buffer containing the raw json string
- * @param tokens Buffer containg the json token information
+ * @param tokens Buffer containing the json token information
  * @return true if parsed correctly, false otherwise
  */
 bool SERVER_parseConfig(char *buffer, jsmntok_t *tokens) {
@@ -85,6 +82,161 @@ bool SERVER_parseConfig(char *buffer, jsmntok_t *tokens) {
 }
 
 
+char SERVER_parseStreamData(char *buffer, jsmntok_t *tokens) {
+
+	jsmntok_t key = tokens[1];
+
+	// Checking for 'cmd'
+	if(checkString(buffer, &key, CMD, 3) == false) {
+		return '\0';
+	}
+
+	// Determine type of command
+	key = tokens[2];
+	return buffer[key.start];
+}
+
+bool SERVER_writeData(char *buffer, jsmntok_t *tokens) {
+
+	jsmntok_t key = tokens[2];
+	jsmntok_t pinKey;
+	jsmntok_t valueKey;
+	uint8_t opcode;
+	uint16_t pin;
+
+	// Checking for 'writedata'
+	if(checkString(buffer, &key, WRITEDATA, 9) == false) {
+		return false;
+	}
+
+	// Checking for 'payload'
+	key = tokens[3];
+	if(checkString(buffer, &key, PAYLOAD, 7) == false) {
+		return false;
+	}
+
+	key = tokens[4];
+	if(key.type != JSMN_OBJECT) {
+		return false;
+	}
+
+	key = tokens[5];
+	switch(buffer[key.start]) {
+	case 'o':
+		if(checkString(buffer, &key, OPCODE, 6) == false) {
+			return false;
+		}
+
+		key = tokens[6];
+		opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+
+		key = tokens[7];
+		if(buffer[key.start] == 'p') {
+			if(checkString(buffer, &key, PIN, 3) == false) {
+				return false;
+			}
+			pinKey = tokens[8];
+
+			key = tokens[9];
+			if(checkString(buffer, &key, VALUE, 5) == false) {
+				return false;
+			}
+
+			valueKey = tokens[10];
+		} else {
+
+			if(checkString(buffer, &key, VALUE, 5) == false) {
+				return false;
+			}
+			valueKey = tokens[8];
+
+			key = tokens[9];
+			if(checkString(buffer, &key, PIN, 3) == false) {
+				return false;
+			}
+			pinKey = tokens[10];
+		}
+
+		break;
+	case 'v':
+		if(checkString(buffer, &key, VALUE, 5) == false) {
+			return false;
+		}
+
+		valueKey = tokens[6];
+		key = tokens[7];
+		if(buffer[key.start] == 'o') {
+			if(checkString(buffer, &key, OPCODE, 6) == false) {
+				return false;
+			}
+			key = tokens[8];
+			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+
+			key = tokens[9];
+			if(checkString(buffer, &key, PIN, 3) == false) {
+				return false;
+			}
+			pinKey = tokens[10];
+		} else {
+
+			if(checkString(buffer, &key, PIN, 3) == false) {
+				return false;
+			}
+			pinKey = tokens[8];
+
+			key = tokens[9];
+			if(checkString(buffer, &key, OPCODE, 6) == false) {
+				return false;
+			}
+			key = tokens[10];
+			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+		}
+
+		break;
+	case 'p':
+		if(checkString(buffer, &key, PIN, 3) == false) {
+			return false;
+		}
+		pinKey = tokens[6];
+		key = tokens[7];
+
+		if(buffer[key.start] == 'o') {
+			if(checkString(buffer, &key, OPCODE, 6) == false) {
+				return false;
+			}
+			key = tokens[8];
+			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+
+			key = tokens[9];
+			if(checkString(buffer, &key, VALUE, 5) == false) {
+				return false;
+			}
+
+			valueKey = tokens[10];
+		} else {
+
+			if(checkString(buffer, &key, VALUE, 5) == false) {
+				return false;
+			}
+			valueKey = tokens[8];
+
+			key = tokens[9];
+			if(checkString(buffer, &key, OPCODE, 6) == false) {
+				return false;
+			}
+			key = tokens[10];
+			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+		}
+		break;
+	}
+
+	pin = INTERFACE_list[opcode]->decode(&buffer[pinKey.start], pinKey.end - pinKey.start);
+	INTERFACE_list[opcode]->write(pin, &buffer[valueKey.start], valueKey.end - valueKey.start);
+
+	return true;
+}
+
+
 bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 
 	jsmntok_t key = tokens[3];
@@ -97,11 +249,6 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 	char pin[MAX_PIN];
 	char opcodeStr[MAX_OPCODE];
 
-	// Need to move this away from here
-    interfaces[0] = &digitalWriteInterface;
-    interfaces[1] = &digitalReadInterface;
-    interfaces[2] = &analogReadInterface;
-    interfaces[3] = &analogWriteInterface;
 
 	// Checking for 'payload'
 	if(checkString(buffer, &key, PAYLOAD, 7) == false) {
@@ -198,7 +345,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 		memcpy(Configs[CurrentConfigs].name, &buffer[nameKey.start],
 			   Configs[CurrentConfigs].nameLength);
 		Configs[CurrentConfigs].opcode = opcode;
-		Configs[CurrentConfigs].pin = interfaces[opcode]->decode(pin, pinLength);
+		Configs[CurrentConfigs].pin = INTERFACE_list[opcode]->decode(pin, pinLength);
 
 		CurrentConfigs++;
 
@@ -242,7 +389,7 @@ uint16_t SERVER_sendData(char *data) {
 
 		// Writing the data for the configuration
 		data[currentIndex++] = '"';
-		dataLength = interfaces[Configs[i].opcode]->read(Configs[i].pin, &data[currentIndex]);
+		dataLength = INTERFACE_list[Configs[i].opcode]->read(Configs[i].pin, &data[currentIndex]);
 		currentIndex += dataLength;
 		data[currentIndex++] = '"';
 
@@ -263,6 +410,13 @@ void SERVER_initInterfaces(void) {
 	uint8_t i;
 
 	for(i = 0; i < CurrentConfigs; i++) {
-		interfaces[Configs[i].opcode]->init(Configs[i].pin);
+		INTERFACE_list[Configs[i].opcode]->init(Configs[i].pin);
 	}
+}
+
+
+void SERVER_handlePacket(char *data, int32_t length) {
+
+
+
 }

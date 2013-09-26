@@ -16,18 +16,15 @@
 #include "pins_energia.h"
 #include "msp430f5529lp_interface.h"
 
+ const interfaceName_t boardInterfaceNames[NUMBER_OF_INTERFACES] = {
 
-
- const INTERFACE_name boardInterfaceNames[NUMBER_OF_INTERFACES] =
-{
-        // Default on-board interfaces
+		 // Default on-board interfaces
         {"GREENLED", 8, GREEN_LED},
         {"REDLED", 6, RED_LED},
         {"TEMPSENSOR", 10, A10},
         {"BATTERY", 7, A11},
         {"PUSH1", 5, PUSH1},
         {"PUSH2", 5, PUSH2},
-
 
         // F5529 available interfaces
 
@@ -48,7 +45,6 @@
         {"P4_0_OUTPUT", 11, P4_0},
         {"P3_7_OUTPUT", 11, P3_7},
         {"P8_2_OUTPUT", 11, P8_2},
-
 
         // Analog Interfaces
         {"A0", 2, A0},
@@ -76,9 +72,4 @@
         {"LCD0", 4, LCD0},
         {"RF0", 3, RF0},
         {"SPISENSOR0", 10, SPISENSOR0}
-
 };
-
-
-
-

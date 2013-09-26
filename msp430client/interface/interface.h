@@ -10,45 +10,25 @@
 //
 //*****************************************************************************
 
-
 #ifndef INTERFACE_H_
 #define INTERFACE_H_
-#include "stdint.h"
+#include <stdint.h>
 
-#define NUMBER_OF_INTERFACES    39
-//*****************************************************************************
-//
-//! \typedef INTERFACE_generic
-//! \brief Type definition for \link _INTERFACE_generic \endlink
-//!     structure
-//!
-//! \struct _INTERFACE_generic
-//! \brief Generic type for \b interface.
-//
-//*****************************************************************************
-typedef struct _INTERFACE_generic
+typedef struct
 {
-    void (*init)(uint8_t pin);
-    uint16_t (*read)(uint8_t pin, char* input);
-    void (*write)(uint8_t pin, char* output, char output_length);
-    uint16_t (*decode)(char* pinStr, uint8_t pin_length);
-} INTERFACE_generic;
+    void (*const init)(uint8_t pin);
+    uint16_t (*const read)(uint8_t pin, char* input);
+    void (*const write)(uint8_t pin, char* output, char output_length);
+    uint16_t (*const decode)(char* pinStr, uint8_t pin_length);
+} genericInterface_t;
 
-
-typedef struct _INTERFACE_name
+typedef struct
 {
-   char* interfaceName;
-  int8_t interfaceName_length;
-  uint8_t interfaceNumber;
-} INTERFACE_name;
+	const char* interfaceName;
+	const int8_t interfaceName_length;
+	const uint8_t interfaceNumber;
+} interfaceName_t;
 
+extern const genericInterface_t* INTERFACE_list[];
 
-extern INTERFACE_generic digitalReadInterface;
-extern INTERFACE_generic digitalWriteInterface;
-extern INTERFACE_generic analogReadInterface;
-extern INTERFACE_generic analogWriteInterface;
-
-extern uint16_t interfaceDecode(char *pinStr, uint8_t pinLength);
-extern void dummyAPI(void);
-extern void interfaceInitializeAll();
 #endif /* INTERFACE_H_ */

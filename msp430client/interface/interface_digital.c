@@ -2,7 +2,7 @@
  * interface_digital.c
  *
  *  Created on: Sep 16, 2013
- *      Author: a0271518
+ *      Author: a0271318
  */
 
 //*****************************************************************************
@@ -17,60 +17,50 @@
 #include "string.h"
 
 void interfaceDigitalReadInit(uint8_t pin){
-    pinMode( pin, INPUT_PULLUP);
+    pinMode(pin, INPUT_PULLUP);
 }
 
-
-
-uint16_t interfaceDigitalRead( uint8_t pin, char* input){
-    uint8_t value;
-    uint16_t input_length;
-    value = digitalRead(pin);
-    if (value == HIGH)
-    {
-        strncpy(input, "HIGH", 4);
-        input_length = 4;
-    }
-    else
-    {
-        strncpy(input, "LOW", 3);
-        input_length = 3;
-    }
-    return input_length;
+uint16_t interfaceDigitalRead(uint8_t pin, char* input) {
+	uint8_t value;
+	uint16_t input_length;
+	value = digitalRead(pin);
+	if (value == HIGH) {
+		strncpy(input, "HIGH", 4);
+		input_length = 4;
+	} else {
+		strncpy(input, "LOW", 3);
+		input_length = 3;
+	}
+	return input_length;
 }
 
-void interfaceDigitalOutputWrite(uint8_t pin, char* output, char output_length){
-
-
-    if (output_length==3)
-        if (strncmp(output, "LOW", 3)==0)
-            digitalWrite( pin, LOW);
-    if (output_length==4)
-        if (strncmp(output, "HIGH", 4)==0)
-            digitalWrite( pin, HIGH);
-    //!TODO: Exception handling
+void interfaceDigitalOutputInit(uint8_t pin) {
+	pinMode(pin, OUTPUT);
 }
 
-uint16_t interfaceDigitalOutputRead( uint8_t pin, char* input){
-    uint8_t value;
-    uint16_t input_length;
-    value = digitalRead(pin);
-    if (value == HIGH)
-    {
-        strncpy(input, "HIGH", 4);
-        input_length = 4;
-    }
-    else
-    {
-        strncpy(input, "LOW", 3);
-        input_length = 3;
-    }
-    return input_length;
+void interfaceDigitalOutputWrite(uint8_t pin, char* output, char output_length) {
+	if (output_length == 5) {
+		if (strncmp(output, "False", 5) == 0) {
+			digitalWrite(pin, LOW);
+		}
+	} else if (output_length == 4) {
+		if (strncmp(output, "True", 4) == 0) {
+			digitalWrite(pin, HIGH);
+		}
+	}
 }
 
+uint16_t interfaceDigitalOutputRead(uint8_t pin, char* input) {
+	uint8_t value;
+	uint16_t input_length;
 
-void interfaceDigitalWriteInit(uint8_t pin){
-    pinMode( pin, OUTPUT);
+	value = digitalPresentOutput(pin);
+	if (value == HIGH) {
+		strncpy(input, "HIGH", 4);
+		input_length = 4;
+	} else {
+		strncpy(input, "LOW", 3);
+		input_length = 3;
+	}
+	return input_length;
 }
-
-

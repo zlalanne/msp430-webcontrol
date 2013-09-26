@@ -132,6 +132,16 @@ class GPIOOutput(IWrite):
             return
         super(GPIOOutput, self).write(value)
 
+    @staticmethod
+    def parse_value(value):
+        
+        if value == "HIGH":
+            return True
+        elif value == "LOW":
+            return False
+        else:
+            return value
+
 
 def get_interface_desc():
     read_cls = IRead.__subclasses__()

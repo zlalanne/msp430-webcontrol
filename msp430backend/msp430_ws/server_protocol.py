@@ -198,8 +198,8 @@ class UserClient(WebSocketClient):
 
         # copy buffers
         self.protocol.factory.copy_msp430_buffers(self.associated_msp430,
-                                               self.streaming_buffer_read,
-                                               self.streaming_buffer_write)
+                                                  self.streaming_buffer_read,
+                                                  self.streaming_buffer_write)
 
         if len(self.streaming_buffer_read) > 0 or len(self.streaming_buffer_write) > 0:
             msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA}
@@ -297,30 +297,10 @@ class MSP430Client(TCPClient):
             return False
         if isinstance(state, MSP430StreamState):
 
-            log.msg(state.interfaces_buffer)
-
-            for key, value in state.interfaces_buffer.iteritems():
-                
-                cls_name, port = key.split(":")
-                cls = getattr(msp430_data.interface, cls_name)
-                # TODO: This is hard-coded for now
-                key = "cls:%s, port:%d, eq:" % (cls_name, 1)
-                #key = 'cls:%s, port:%d, eq:%s' % (cls_name, port, '')
-                
-                if msp430_data.interface.IWrite in cls.__bases__:
-                    write_buffer[key] = value
-                elif msp430_data.interface.IRead in cls.__bases__:
-                    read_buffer[key] = value
-
-            log.msg("MSP430Client.copy_buffers write=%s read=%s" % (write_buffer, read_buffer))
-
-            # TODO: Change this to read from evaluated equations
-            """
             for key, value in state.read_data_buffer_eq.iteritems():
                 read_buffer[key] = value
             for key, value in state.write_data_buffer_eq.iteritems():
                 write_buffer[key] = value
-            """
 
             return True
         return False
@@ -473,6 +453,8 @@ class MSP430ConfigState(ServerState):
         if data == common_protocol.MSP430ClientCommands.CONFIG_OK:
             log.msg('MSP430ConfigState - MSP430 was configured')
             self.client.push_state(MSP430StreamState(self.client,
+                reads=self.config_reads,
+                writes=self.config_writes,
                 interfaces=self.config_interfaces
             ))
         elif data == common_protocol.MSP430ClientCommands.CONFIG_FAIL:
@@ -492,16 +474,34 @@ class MSP430ConfigState(ServerState):
         self.display_reads = reads
         self.display_writes = writes
 
-        # convert format from list of displays:
-        # [{u'ch_port': 3, u'equation': u'', u'cls_name': u'ADC'}, {u'ch_port': 3, u'equation': u'', u'cls_name': u'ADC'}]
-        # [{u'ch_port': 3, u'equation': u'', u'cls_name': u'GPIOOutput'}]
-        # to data required:
-        # {'cls:ADC, port:3': {'cls_name':'ADC', 'ch_port':3, 'equations': ['zzzz', 'asdfadfad']}}
-        # this removes duplicates via associated key
 
+        # Format IO to store on the server
         def format_io(io_collection):
-            # deal with duplicates...........
-            # duplicate equations allowed, duplicate instances not allowed
+
+            # Duplicate equations allowed, duplicate instances not allowed
+            instanced_io_dict = {}
+            for io in io_collection:
+                cls_str = io['cls_name']
+                ch_port = io['ch_port']
+                equation = io['equation']
+
+                key = 'cls:%s, port:%s' % (cls_str, ch_port)
+                if key not in instanced_io_dict:
+                    io_new_dict = {'cls_name':cls_str, 'ch_port':ch_port}
+                    io_new_dict['equations'] = [equation]
+                    instanced_io_dict[key] = io_new_dict
+                else:
+                    # we can have more then one equation per instance
+                    existing_instance = instanced_io_dict[key]
+                    equations = existing_instance['equations']
+                    if equation not in equations:
+                        equations.append(equation)
+
+            return instanced_io_dict
+
+        # Format IO to give to the msp430
+        def format_io_msp430(io_collection):
+            # Duplicate equations allowed, duplicate instances not allowed
             instanced_io_dict = {}
             for io in io_collection:
 
@@ -521,7 +521,11 @@ class MSP430ConfigState(ServerState):
 
             return instanced_io_dict
 
-        self.config_interfaces = format_io(reads + writes)
+
+        self.config_interfaces = format_io_msp430(reads + writes)
+        self.config_reads = format_io(reads)
+        self.config_writes = format_io(writes)
+
         log.msg(self.config_interfaces)
 
         if self.client.protocol.debug:
@@ -535,18 +539,26 @@ class MSP430ConfigState(ServerState):
 
 class MSP430StreamState(ServerState):
     """ In this state the MSP430 has been configured and is streaming data"""
-    def __init__(self, client, interfaces):
+    def __init__(self, client, reads, writes, interfaces):
         super(MSP430StreamState, self).__init__(client)
 
-        # {'cls:ADC, port:3': {'cls_name':'ADC', 'ch_port':3, 'equations': ['zzzz', 'asdfadfad']}}
-        self.interfaces = interfaces
+        # Read/Write configs is used to communicate with the web
+        # Interface config is used to communicate to the msp430
+        self.config_reads = reads
+        self.config_writes = writes
+        self.config_interfaces = interfaces
 
-        self.read_data_buffer = {}
-        self.read_data_buffer_eq = {}
-        self.write_data_buffer = {}
+        # Buffers for storing the evaluated data
         self.write_data_buffer_eq = {}
+        self.read_data_buffer_eq = {}
+
+        # Buffers for storing the raw data
+        self.read_data_buffer = {}
+        self.write_data_buffer = {}
+
+        # Maps an equation to an interface
         self.write_data_eq_map = {}
-        self.interfaces_buffer = {}
+
         self.datamsgcount_ack = 0
 
     def evaluate_eq(self, eq, value):
@@ -567,7 +579,13 @@ class MSP430StreamState(ServerState):
         self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='stream')
 
     def dataReceived(self, data):
-        data = json.loads(data)
+        log.msg("MSP430StreamState.dataReceived - Data Received:%s" % data)
+        
+        try:
+            data = json.loads(data)
+        except ValueError:
+            log.msg("MSP430StreamState.dataReceived - Problem with JSON structure")
+            return
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
             # order here is important, pop first!
@@ -580,13 +598,26 @@ class MSP430StreamState(ServerState):
 
             self.datamsgcount_ack += 1
             interfaces = data['interfaces']
-   
-            # Need to change this to perform equations
+
             for key, value in interfaces.iteritems():
-                if value == "HIGH":
-                    self.interfaces_buffer[key] = True
-                elif value == "LOW":
-                    self.interfaces_buffer[key] = False
+
+                cls_name, port = key.split(":")
+                cls = getattr(msp430_data.interface, cls_name)
+
+                # TODO: This is hard-coded for now
+                new_key = "cls:%s, port:%d, eq:" % (cls_name, 1)
+                new_value = cls.parse_value(value)
+
+                # Need to evaluate the equations
+                if msp430_data.interface.IWrite in cls.__bases__:
+                    self.write_data_buffer[new_key] = new_value
+                    self.write_data_buffer_eq[new_key] = {"calculated" : new_value, "real": new_value}
+                    self.write_data_eq_map[new_key] = key
+
+                elif msp430_data.interface.IRead in cls.__bases__:
+                    self.read_data_buffer[new_key] = new_value
+                    self.read_data_buffer_eq[new_key] = new_value
+
 
             # Ignoring the equations for now
             """
@@ -649,9 +680,11 @@ class MSP430StreamState(ServerState):
     def write_interface_data(self, key, value):
         # Removes the EQ from the key sent by the client
         config_key = self.write_data_eq_map[key]
+        opcode = self.config_interfaces[config_key]["opcode"]
+        pin = self.config_interfaces[config_key]["pin"]
+        payload = {'opcode': opcode, 'pin' : pin, 'value' : str(value)}
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
-               'iface_port':config_key,
-               'value':value}
+               'payload': payload}
         self.client.protocol.transport.write(json.dumps(msg))
 
     def drop_to_config(self, reads, writes):

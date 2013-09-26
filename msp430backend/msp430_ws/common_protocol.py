@@ -31,7 +31,7 @@ class ServerCommands(object):
     ACK_DATA = 'ack_data'
     RESUME_STREAMING = 'resume'
     PAUSE_STREAMING = 'pause_s'
-    WRITE_DATA = 'write_data'
+    WRITE_DATA = 'writedata'
     REGISTER = 'reg'
 
     MSP430_STATE_CHANGE = 'msp430_schange'
@@ -45,7 +45,7 @@ class MSP430ClientCommands(object):
 class UserClientCommands(object):
     CONNECT_MSP430 = 'msp430_connect'
     ACK_DATA = 'ack_data'
-    WRITE_DATA = 'write_data'
+    WRITE_DATA = 'writedata'
 
 
 class StateStack(list):

@@ -40,6 +40,9 @@ MSP430 Firmware
 
 Current Releases
 -----------------
+* 0.31 Release
+    * Took out the old MSP430 code
+
 * 0.30 Release
     * MSP430 now acts as a client to the server
     * Added graph and button interface. This is bascially for GPIO Output and Analog Input

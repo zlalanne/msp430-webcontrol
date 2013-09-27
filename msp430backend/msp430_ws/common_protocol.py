@@ -27,10 +27,10 @@ class ServerCommands(object):
     ACK = 'ack' 
     NACK = 'nack'
     CONFIG = 'config'
-    DROP_TO_CONFIG = 'drop_to_config'
-    ACK_DATA = 'ack_data'
+    DROP_TO_CONFIG = 'dropconfig'
+    ACK_DATA = 'ackdata'
     RESUME_STREAMING = 'resume'
-    PAUSE_STREAMING = 'pause_s'
+    PAUSE_STREAMING = 'pauses'
     WRITE_DATA = 'writedata'
     REGISTER = 'reg'
 
@@ -44,7 +44,7 @@ class MSP430ClientCommands(object):
 
 class UserClientCommands(object):
     CONNECT_MSP430 = 'msp430_connect'
-    ACK_DATA = 'ack_data'
+    ACK_DATA = 'ackdata'
     WRITE_DATA = 'writedata'
 
 

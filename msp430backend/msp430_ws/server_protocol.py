@@ -198,8 +198,8 @@ class UserClient(WebSocketClient):
 
         # copy buffers
         self.protocol.factory.copy_msp430_buffers(self.associated_msp430,
-                                               self.streaming_buffer_read,
-                                               self.streaming_buffer_write)
+                                                  self.streaming_buffer_read,
+                                                  self.streaming_buffer_write)
 
         if len(self.streaming_buffer_read) > 0 or len(self.streaming_buffer_write) > 0:
             msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA}
@@ -296,6 +296,7 @@ class MSP430Client(TCPClient):
             # MSP430 has no states
             return False
         if isinstance(state, MSP430StreamState):
+
             for key, value in state.read_data_buffer_eq.iteritems():
                 read_buffer[key] = value
             for key, value in state.write_data_buffer_eq.iteritems():
@@ -409,7 +410,7 @@ class MSP430RegisterState(ServerState):
                     name = cls.__name__
                     desc = msp430_data.utility.trim(cls.__doc__)
                     choices = []
-                    for choice_key, choice_value in cls.IO_CHOICES:
+                    for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
                         choice = {}
                         choice['s'] = choice_key
                         choice['d'] = choice_value
@@ -422,33 +423,6 @@ class MSP430RegisterState(ServerState):
             self.client.interfaces = msp430_data.interface.get_interface_desc()
             for key in self.client.interfaces.iterkeys():
                 self.client.iface[key] = interface_desc(self.client.interfaces[key])
-
-            print(self.client.iface)
-
-            def interface_desc(ifaces):
-                # List of classes that resemble I/O. Creating a struct based on
-                # their names, docstring, choices and I/O type to send to django
-                # application.
-                ret = []
-                for cls in ifaces:
-                    name = cls.__name__
-                    desc = msp430_data.utility.trim(cls.__doc__)
-                    choices = []
-                    for choice_key, choice_value in cls.IO_CHOICES:
-                        choice = {}
-                        choice['s'] = choice_key
-                        choice['d'] = choice_value
-                        choices.append(choice)
-
-                    ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
-                return ret
-
-            self.client.iface = {}
-            self.client.interfaces = msp430_data.interface.get_interface_desc()
-            for key in self.client.interfaces.iterkeys():
-                self.client.iface[key] = interface_desc(self.client.interfaces[key])
-
-            print(self.client.iface)
 
             self.client.mac = data
             self.registered = True
@@ -480,7 +454,8 @@ class MSP430ConfigState(ServerState):
             log.msg('MSP430ConfigState - MSP430 was configured')
             self.client.push_state(MSP430StreamState(self.client,
                 reads=self.config_reads,
-                writes=self.config_writes
+                writes=self.config_writes,
+                interfaces=self.config_interfaces
             ))
         elif data == common_protocol.MSP430ClientCommands.CONFIG_FAIL:
             if self.client.protocol.debug:
@@ -499,16 +474,11 @@ class MSP430ConfigState(ServerState):
         self.display_reads = reads
         self.display_writes = writes
 
-        # convert format from list of displays:
-        # [{u'ch_port': 3, u'equation': u'', u'cls_name': u'ADC'}, {u'ch_port': 3, u'equation': u'', u'cls_name': u'ADC'}]
-        # [{u'ch_port': 3, u'equation': u'', u'cls_name': u'GPIOOutput'}]
-        # to data required:
-        # {'cls:ADC, port:3': {'cls_name':'ADC', 'ch_port':3, 'equations': ['zzzz', 'asdfadfad']}}
-        # this removes duplicates via associated key
 
+        # Format IO to store on the server
         def format_io(io_collection):
-            # deal with duplicates...........
-            # duplicate equations allowed, duplicate instances not allowed
+
+            # Duplicate equations allowed, duplicate instances not allowed
             instanced_io_dict = {}
             for io in io_collection:
                 cls_str = io['cls_name']
@@ -529,35 +499,66 @@ class MSP430ConfigState(ServerState):
 
             return instanced_io_dict
 
+        # Format IO to give to the msp430
+        def format_io_msp430(io_collection):
+            # Duplicate equations allowed, duplicate instances not allowed
+            instanced_io_dict = {}
+            for io in io_collection:
+
+                cls = getattr(msp430_data.interface, io['cls_name'])
+
+                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
+                    if choice_key == io['ch_port']:
+                        key = cls.__name__ + ":" + choice_value
+                        break
+                else:
+                    log.msg("Error parsing class")
+                    continue
+
+                if key not in instanced_io_dict:
+                    io_new_dict = {'pin': choice_pin, 'opcode': cls.IO_OPCODE}
+                    instanced_io_dict[key] = io_new_dict
+
+            return instanced_io_dict
+
+
+        self.config_interfaces = format_io_msp430(reads + writes)
         self.config_reads = format_io(reads)
         self.config_writes = format_io(writes)
 
-        log.msg(self.config_reads)
-        log.msg(self.config_writes)
+        log.msg(self.config_interfaces)
 
         if self.client.protocol.debug:
             log.msg('MSP430ConfigState - Pushing configs to remote MSP430')
 
         msg = {'cmd':common_protocol.ServerCommands.CONFIG,
-               'payload':{'read':self.config_reads, 'write':self.config_writes}}
+               'payload':self.config_interfaces}
 
         self.client.protocol.transport.write(json.dumps(msg))
 
 
 class MSP430StreamState(ServerState):
     """ In this state the MSP430 has been configured and is streaming data"""
-    def __init__(self, client, reads, writes):
+    def __init__(self, client, reads, writes, interfaces):
         super(MSP430StreamState, self).__init__(client)
 
-        # {'cls:ADC, port:3': {'cls_name':'ADC', 'ch_port':3, 'equations': ['zzzz', 'asdfadfad']}}
+        # Read/Write configs is used to communicate with the web
+        # Interface config is used to communicate to the msp430
         self.config_reads = reads
         self.config_writes = writes
+        self.config_interfaces = interfaces
 
-        self.read_data_buffer = {}
-        self.read_data_buffer_eq = {}
-        self.write_data_buffer = {}
+        # Buffers for storing the evaluated data
         self.write_data_buffer_eq = {}
+        self.read_data_buffer_eq = {}
+
+        # Buffers for storing the raw data
+        self.read_data_buffer = {}
+        self.write_data_buffer = {}
+
+        # Maps an equation to an interface
         self.write_data_eq_map = {}
+
         self.datamsgcount_ack = 0
 
     def evaluate_eq(self, eq, value):
@@ -578,7 +579,13 @@ class MSP430StreamState(ServerState):
         self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='stream')
 
     def dataReceived(self, data):
-        data = json.loads(data)
+        log.msg("MSP430StreamState.dataReceived - Data Received:%s" % data)
+
+        try:
+            data = json.loads(data)
+        except ValueError:
+            log.msg("MSP430StreamState.dataReceived - Problem with JSON structure")
+            return
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
             # order here is important, pop first!
@@ -590,12 +597,37 @@ class MSP430StreamState(ServerState):
             log.msg(data)
 
             self.datamsgcount_ack += 1
-            read_data = data['read']
-            write_data = data['write']
+            interfaces = data['interfaces']
 
-            log.msg(write_data)
+            for key, value in interfaces.iteritems():
 
-            for key, value in read_data.iteritems():
+                cls_name, pin = key.split(":")
+                cls = getattr(msp430_data.interface, cls_name)
+
+                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
+                    if choice_pin == pin:
+                        break
+                else:
+                    choice_key = "ERROR"
+                    continue
+
+                new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
+                new_value = cls.parse_value(value)
+
+                # Need to evaluate the equations
+                if msp430_data.interface.IWrite in cls.__bases__:
+                    self.write_data_buffer[new_key] = new_value
+                    self.write_data_buffer_eq[new_key] = {"calculated" : new_value, "real": new_value}
+                    self.write_data_eq_map[new_key] = key
+
+                elif msp430_data.interface.IRead in cls.__bases__:
+                    self.read_data_buffer[new_key] = new_value
+                    self.read_data_buffer_eq[new_key] = new_value
+
+
+            # Ignoring the equations for now
+            """
+            for key, value in interfaces.iteritems():
                 self.read_data_buffer[key] = value
                 # perform equation operations here on values
                 # key: 'cls:%s, port:%d, eq:%s'
@@ -633,13 +665,14 @@ class MSP430StreamState(ServerState):
                 else:
                     # TODO: drop to config state or something, remote config seems to be invalid
                     log.msg("MSP430StreamState - Remote config invalid")
-
+            """
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
                 data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
-                self.client.protocol.sendMessage(json.dumps(data))
+                #self.client.protocol.transport.write(json.dumps(data))
                 self.datamsgcount_ack = 0
-            # notify factory of new data event
+
+            # Notify factory of new data event
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
@@ -653,9 +686,11 @@ class MSP430StreamState(ServerState):
     def write_interface_data(self, key, value):
         # Removes the EQ from the key sent by the client
         config_key = self.write_data_eq_map[key]
+        opcode = self.config_interfaces[config_key]["opcode"]
+        pin = self.config_interfaces[config_key]["pin"]
+        payload = {'opcode': opcode, 'pin' : pin, 'value' : str(value)}
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
-               'iface_port':config_key,
-               'value':value}
+               'payload': payload}
         self.client.protocol.transport.write(json.dumps(msg))
 
     def drop_to_config(self, reads, writes):
@@ -760,7 +795,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
             msp430.pause_streaming()
 
     def msp430_new_data_event(self, msp430):
-        # resume streaming on any RPIs waiting for new data
+        # resume streaming on any MSP430s waiting for new data
         for client in self.msp430_clients_registered_users[msp430.mac]:
             client.resume_streaming()
 

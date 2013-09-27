@@ -24,14 +24,14 @@ class State(object):
 
 class ServerCommands(object):
     AUTH = 'auth'
-    ACK = 'ack'
+    ACK = 'ack' 
     NACK = 'nack'
     CONFIG = 'config'
-    DROP_TO_CONFIG = 'drop_to_config'
-    ACK_DATA = 'ack_data'
-    RESUME_STREAMING = 'resume_s'
-    PAUSE_STREAMING = 'pause_s'
-    WRITE_DATA = 'write_data'
+    DROP_TO_CONFIG = 'dropconfig'
+    ACK_DATA = 'ackdata'
+    RESUME_STREAMING = 'resume'
+    PAUSE_STREAMING = 'pauses'
+    WRITE_DATA = 'writedata'
     REGISTER = 'reg'
 
     MSP430_STATE_CHANGE = 'msp430_schange'
@@ -44,8 +44,8 @@ class MSP430ClientCommands(object):
 
 class UserClientCommands(object):
     CONNECT_MSP430 = 'msp430_connect'
-    ACK_DATA = 'ack_data'
-    WRITE_DATA = 'write_data'
+    ACK_DATA = 'ackdata'
+    WRITE_DATA = 'writedata'
 
 
 class StateStack(list):

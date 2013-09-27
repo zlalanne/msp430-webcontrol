@@ -9,7 +9,7 @@ from msp430_ws.server_protocol import MSP430ServerProtocol, MSP430SocketServerFa
 
 WS_PORT = 9000
 HTTP_PORT = 8090
-SERVER = "192.168.0.170"
+SERVER = "192.168.1.100"
 DEBUG = True
 
 

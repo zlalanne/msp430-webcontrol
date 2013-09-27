@@ -8,125 +8,94 @@ class IBase(object):
     IO_TYPE_BINARY = 'B'
     IO_TYPE_INTEGER = 'I'
 
-    # default state, override this
+    # Default type, override this
     IO_TYPE = IO_TYPE_BINARY
+
+    # Default type, override this
+    IO_OPCODE = -1
+
     # override this, stored value, description
     # stored value must be an integer, desc must be str
     # ex: ((1, 'GPIO1'),)
     IO_CHOICES = (())
 
-    ALLOW_DUPLICATE_PORTS = False
-    channels_in_use = {}
-
-    def __init__(self, ch_port):
-        self.ch_port = ch_port
-
-        port_exists = False
-        for existing_port, existing_port_name in self.IO_CHOICES:
-            if existing_port == ch_port:
-                port_exists = True
-                break
-        if not port_exists:
-            raise CHPortDoesntExistException('Port %d does not exist' % ch_port)
-
-        if not self.__class__.ALLOW_DUPLICATE_PORTS:
-            if ch_port in self.__class__.channels_in_use:
-                raise CHPortInUseException("Channel %d is in use" % ch_port)
-            self.__class__.channels_in_use[ch_port] = self
-
-    @classmethod
-    def flush(cls):
-        """
-        Clean out all instances
-        """
-        for key, value in cls.channels_in_use.items():
-            value.close()
-
-    def close(self):
-        """
-        Because we're probably dealing with IO
-        """
-        del self.__class__.channels_in_use[self.ch_port]
-
-    @classmethod
-    def open(cls, *args, **kwargs):
-        """
-        Open constructor, idea is to provide a File like interface
-        """
-        return cls(*args, **kwargs)
-
+    # Override this. This converts the string returned from the msp430 to a
+    # proper data type for displaying on th web interface
+    @staticmethod
+    def parse_value(value):
+        raise NotImplementedError, "Need to implement this for the interface"
 
 class IRead(IBase):
     """
     Interface you should extend to define interfaces that are
-    available to poll for data on the RPI.
+    available to poll for data on the MSP430.
     """
-
-    def read(self):
-        """
-        Poll for new data
-        Blocks until new data becomes available.
-        Returns data
-        """
-        raise NotImplementedError("Should have implemented this")
-
-    def __iter__(self):
-        """
-        Generator to repeatedly poll
-        """
-        while True:
-            yield self.read()
-
 
 class IWrite(IBase):
     """
-    Interface you should extend to implement a rpi writable interface
+    Interface you should extend to implement an MSP430 writable interface
     """
-    # This is the default value assumed when no data has been written
-    DEFAULT_VALUE = None
 
-    def __init__(self, ch_port):
-        super(IWrite, self).__init__(ch_port)
-        self.last_written_value = self.DEFAULT_VALUE
 
-    def read(self):
-        """
-        By default returns the last written state, If no write calls have been made
-        it returns the value set by DEFAULT_VALUE
-        """
-        return self.last_written_value
+class AnalogInput(IRead):
+    """Maps to ADC read"""
 
-    def write(self, value):
-        self.last_written_value = value
+    IO_TYPE = IBase.IO_TYPE_INTEGER
+
+    IO_OPCODE = 2
+
+    IO_CHOICES = (
+        (0, 'A0', 'A0'),
+        (1, 'A1', 'A1'),
+        (2, 'A2', 'A2'),
+        (3, 'A3', 'A3'),
+        (4, 'A4', 'A4'),
+        (5, 'A5', 'A5'),
+        (6, 'A6', 'A6'),
+        (7, 'A12', 'A12'),
+    )
+
+    @staticmethod
+    def parse_value(value):
+        try:
+            return int(value.strip())
+        except:
+            return 0
 
 
 class GPIOOutput(IWrite):
     """Maps to GPIO write"""
+
+    """IO_TYPE is the type of choice the django application will give"""
     IO_TYPE = IBase.IO_TYPE_BINARY
+
+    """IO_OPCODE is the opcode used to tell the MSP430 the type of IO"""
+    IO_OPCODE = 0
+
+    """IO_CHOICES lists the choices for this type of IO. Ex:
+        (key, description, pin)
+    """
     IO_CHOICES = (
-        (1, 'P1.0'),
-        (2, 'P1.1'),
-        (3, 'P1.2'),
-        (4, 'P1.3'),
-        (5, 'P1.4'),
-        (6, 'P1.5'),
-        (7, 'P1.6'),
-        (8, 'P1.7'),
+        (1, 'GREEN_LED', "GREENLED"),
+        (2, 'RED_LED', "REDLED"),
+        (3, "P1_6", "P1_6_OUTPUT" ),
+        (4, "P2_7", "P2_7_OUTPUT" ),
+        (5, "P8_1", "P8_1_OUTPUT" ),
+        (6, "P4_3", "P4_3_OUTPUT" ),
+        (7, "P4_0", "P4_0_OUTPUT" ),
+        (8, "P3_7", "P3_7_OUTPUT" ),
+        (9, "P8_2", "P8_2_OUTPUT" ),
     )
-    DEFAULT_VALUE = False
 
-    def __init__(self, ch_port):
-        super(GPIOOutput, self).__init__(ch_port)
-        print "Setup the GPIO"
+    @staticmethod
+    def parse_value(value):
 
-    def write(self, value):
-        if value is True:
-            print "Set output for GPIO High"
-        elif value is False:
-            print "Set output for GPIO Low"
+        if value == "HIGH":
+            return True
+        elif value == "LOW":
+            return False
         else:
-            return
-        super(GPIOOutput, self).write(value)
+            return value
 
 
 def get_interface_desc():
@@ -137,4 +106,3 @@ def get_interface_desc():
     ret['read'] = read_cls
     ret['write'] = write_cls
     return ret
-

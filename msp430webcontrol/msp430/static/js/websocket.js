@@ -23,11 +23,11 @@ function WSClient(url, debug) {
     this.clientcmds = {
         'CONNECT_MSP430':'msp430_connect',
         'ACK_DATA':'ack_data',
-        'WRITE_DATA':'write_data'
+        'WRITE_DATA':'writedata'
     };
     this.servercmds = {
         'MSP430_STATE_CHANGE':'msp430_schange',
-        'WRITE_DATA':'write_data'
+        'WRITE_DATA':'writedata'
     };
 }
 

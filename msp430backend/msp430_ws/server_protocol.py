@@ -580,7 +580,7 @@ class MSP430StreamState(ServerState):
 
     def dataReceived(self, data):
         log.msg("MSP430StreamState.dataReceived - Data Received:%s" % data)
-        
+
         try:
             data = json.loads(data)
         except ValueError:
@@ -601,11 +601,17 @@ class MSP430StreamState(ServerState):
 
             for key, value in interfaces.iteritems():
 
-                cls_name, port = key.split(":")
+                cls_name, pin = key.split(":")
                 cls = getattr(msp430_data.interface, cls_name)
 
-                # TODO: This is hard-coded for now
-                new_key = "cls:%s, port:%d, eq:" % (cls_name, 1)
+                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
+                    if choice_pin == pin:
+                        break
+                else:
+                    choice_key = "ERROR"
+                    continue
+
+                new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
                 new_value = cls.parse_value(value)
 
                 # Need to evaluate the equations

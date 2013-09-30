@@ -44,10 +44,8 @@ class WebServerProtocol(protocol.Protocol):
 
     def connectionMade(self):
         if self.transport.getPeer().host == settings.SITE_SERVER:
-            log.msg("Coming from the web server")
             self.client = WebServerClient(self)
         else:
-            log.msg("Coming from an MSP430")
             self.client = MSP430Client(self)
 
         self.client.connectionMade()
@@ -193,6 +191,7 @@ class UserClient(WebSocketClient):
         self.paused = True
 
     def copy_and_send(self):
+
         if self.ackcount <= -10 or self.paused:
             return
 
@@ -579,8 +578,6 @@ class MSP430StreamState(ServerState):
         self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='stream')
 
     def dataReceived(self, data):
-        log.msg("MSP430StreamState.dataReceived - Data Received:%s" % data)
-
         try:
             data = json.loads(data)
         except ValueError:
@@ -626,46 +623,7 @@ class MSP430StreamState(ServerState):
 
 
             # Ignoring the equations for now
-            """
-            for key, value in interfaces.iteritems():
-                self.read_data_buffer[key] = value
-                # perform equation operations here on values
-                # key: 'cls:%s, port:%d, eq:%s'
-                if key in self.config_reads:
-                    for eq in self.config_reads[key]['equations']:
-                        new_key = 'cls:%s, port:%d, eq:%s' % (
-                            self.config_reads[key]['cls_name'],
-                            self.config_reads[key]['ch_port'],
-                            eq,
-                        )
-                        self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, value)
-                else:
-                    # TODO: drop to config state or something, remote config seems to be invalid
-                    log.msg("MSP430StreamState - Remote config invalid")
 
-            if self.client.protocol.debug:
-                log.msg('MSP430StreamState - EQs: %s' % str(self.read_data_buffer_eq))
-            for key, value in write_data.iteritems():
-                # Equations for write interfaces are applied on the returned value
-                # Input value to interfaces are unchanged
-                self.write_data_buffer[key] = value
-                # Key: 'cls:%s, port:%d, eq:%s'
-                if key in self.config_writes:
-                    for eq in self.config_writes[key]['equations']:
-                        new_key = 'cls:%s, port:%d, eq:%s' % (
-                            self.config_writes[key]['cls_name'],
-                            self.config_writes[key]['ch_port'],
-                            eq,
-                        )
-                        self.write_data_eq_map[new_key] = key
-                        self.write_data_buffer_eq[new_key] = {
-                            'calculated':self.evaluate_eq(eq, value),
-                            'real':value,
-                        }
-                else:
-                    # TODO: drop to config state or something, remote config seems to be invalid
-                    log.msg("MSP430StreamState - Remote config invalid")
-            """
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
                 data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
@@ -673,6 +631,7 @@ class MSP430StreamState(ServerState):
                 self.datamsgcount_ack = 0
 
             # Notify factory of new data event
+            log.msg("MSP430StreamState.dataReceived - Going to notify the factory")
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
@@ -843,8 +802,11 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
             if self.debug:
                 log.msg("MSP430SocketServerFactory.disconnect_msp430 - %s msp430 disconnected" % (msp430.mac,))
             reactor.callInThread(msp430.protocol.disconnect_msp430)
-            del self.msp430_clients[msp430.mac]
-            del self.msp430_clients_registered_users[msp430.mac]
+            try:
+                del self.msp430_clients[msp430.mac]
+                del self.msp430_clients_registered_users[msp430.mac]
+            except KeyError:
+                log.msg(self.msp430_clients)
 
     def disconnect_msp430_wsite(self, msp430):
         """Called after MSP430 has been disconnected from web server"""

@@ -53,7 +53,7 @@ class WebServerProtocol(protocol.Protocol):
     def register_msp430(self):
         """This sends a http request to the django appliaction. This effictevely
         enters the MSP430 into the database of the django application. It then
-        tells the websocket server to alter the user that a new MSP430 has
+        tells the websocket server to alert the user that a new MSP430 has
         come online"""
 
 
@@ -391,14 +391,16 @@ class MSP430RegisterState(ServerState):
             # TODO: Add some MSP430 authentication here
 
             if data == common_protocol.ServerCommands.REGISTER:
-                self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
                 self.re_message_count += 1
                 if self.client.protocol.debug:
                     log.msg("MSP430Client.dataReceived - Registration Request")
+                self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
             else:
                 self.client.protocol.transport.write(common_protocol.ServerCommands.NACK)
 
         elif self.re_message_count == 1 and not self.registered:
+
+            self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
 
             def interface_desc(ifaces):
                 # List of classes that resemble I/O. Creating a struct based on
@@ -430,7 +432,6 @@ class MSP430RegisterState(ServerState):
             if self.client.protocol.debug:
                 log.msg("MSP430Client.dataReceived - Successful Registration")
 
-            self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
             self.client.push_state(MSP430ConfigState(self.client))
 
             # Add to dictionary of clients in the WS factory
@@ -602,10 +603,11 @@ class MSP430StreamState(ServerState):
                 cls = getattr(msp430_data.interface, cls_name)
 
                 for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if choice_pin == pin:
+                    if pin == choice_value:
                         break
                 else:
                     choice_key = "ERROR"
+                    log.msg("MSP430StreamState.dataReceived - Error parsing incoming data for pin")
                     continue
 
                 new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
@@ -722,11 +724,12 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         # safari
         self.allowHixie76 = True
 
-        # identify rpi's by their macs
-        # identify user by peerstr
+        # Identify MSP430's by their macs
+        # Identify user by peerstr
         self.msp430_clients = {}
         self.user_client = {}
-        # key RPI mac, value list of user clients
+
+        # Key MSP430 mac, value list of user clients
         self.msp430_clients_registered_users = {}
 
     def register_user_to_msp430(self, client, msp430):
@@ -785,7 +788,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
     def register_msp430(self, msp430):
         # This is called when the MSP430 has been authenticated with the WS server
         # register on the site server
-        reactor.callInThread(msp430.protocol.register_msp430)
+        msp430.protocol.register_msp430()
 
         # register locally to the factory
         self.msp430_clients[msp430.mac] = msp430
@@ -828,7 +831,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
 
         Return: True/False for success
         """
-        # check if RPI is actually an active client
+        # Check if MSP430 is actually an active client
         mac = configs['mac']
         if mac not in self.msp430_clients:
             return False

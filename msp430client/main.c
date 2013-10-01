@@ -287,7 +287,7 @@ static void configState(void) {
 	do {
 		status = recv(ulSocket, rxBuffer, 256, 0);
 
-		if (status != -1) {
+		if (status > 0) {
 			// Parse JSON
 			rxBuffer[status] = '\0';
 			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
@@ -383,7 +383,7 @@ static void registerState(void) {
 
 	do {
 		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status == -1);
+	} while (status < 1);
 
 	// Check if we got something besides an ACK
 	if (strncmp(ACK, rxBuffer, 3) != 0) {
@@ -404,7 +404,7 @@ static void registerState(void) {
 
 	do {
 		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status == -1);
+	} while (status < 1);
 
 	// Check if we got an ACK and we are now registered
 	if (strncmp(ACK, rxBuffer, 3) == 0) {
@@ -451,6 +451,10 @@ int main(void) {
 	initHardware();
 	systickInit();
 
+	// Disconnect from anything already connected
+	wlan_disconnect();
+
+	// Connecting to network
 	wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL,
 			(unsigned char*) PASSWORD, 10);
 

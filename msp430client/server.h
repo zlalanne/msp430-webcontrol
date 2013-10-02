@@ -15,7 +15,7 @@ static const unsigned char PASSWORD[] = "15e9d02578";
 #define IP_FIRST	192
 #define IP_SECOND	168
 #define IP_THIRD	0
-#define IP_FOURTH	46
+#define IP_FOURTH	74
 
 #define PORT_FIRST	0x1F
 #define PORT_SECOND	0x9A
@@ -35,6 +35,7 @@ static const unsigned char PASSWORD[] = "15e9d02578";
 #define VALUE			"value"
 
 #define ACKDATA			"ackdata"
+#define COUNT			"count"
 #define WRITEDATA		"writedata"
 #define DROPCONFIG		"dropconfig"
 

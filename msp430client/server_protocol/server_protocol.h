@@ -8,4 +8,5 @@ void SERVER_initInterfaces(void);
 uint16_t SERVER_sendData(char *data);
 char SERVER_parseStreamData(char *buffer, jsmntok_t *tokens);
 bool SERVER_writeData(char *buffer, jsmntok_t *tokens);
+uint8_t SERVER_getACKs(char *rxBuffer, jsmntok_t *tokens);
 #endif

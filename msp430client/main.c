@@ -26,6 +26,10 @@ volatile unsigned char ucStopSmartConfig;
 
 bool StartSample = false;
 
+// Keeps track of how many data messages have not been acked. Will stop streaming
+// data if this number reaches 10
+uint8_t DataMsgCount = 0;
+
 unsigned char printOnce = 1;
 
 #define NETAPP_IPCONFIG_MAC_OFFSET				(20)
@@ -241,6 +245,7 @@ static void streamState(void) {
 
 	int32_t status = 0;
 	char rxBuffer[256];
+	uint8_t acks;
 	jsmntok_t tokens[128];
 	jsmn_parser jsonParser;
 	jsmnerr_t jsonStatus;
@@ -259,7 +264,9 @@ static void streamState(void) {
 			// Determine command
 			switch(SERVER_parseStreamData(rxBuffer, tokens)) {
 			case 'a':
-				// Data ACK - Not implemented
+				// Data ACK
+				acks = SERVER_getACKs(rxBuffer, tokens);
+				DataMsgCount -= acks;
 				break;
 			case 'w':
 				// Write Data
@@ -287,7 +294,7 @@ static void configState(void) {
 	do {
 		status = recv(ulSocket, rxBuffer, 256, 0);
 
-		if (status != -1) {
+		if (status > 0) {
 			// Parse JSON
 			rxBuffer[status] = '\0';
 			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
@@ -313,6 +320,7 @@ static void configState(void) {
 				} while (status != 4);
 
 				SERVER_initInterfaces();
+				DataMsgCount = 0;
 				CurrentState = streamState;
 
 				// Start Timer
@@ -383,7 +391,7 @@ static void registerState(void) {
 
 	do {
 		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status == -1);
+	} while (status < 1);
 
 	// Check if we got something besides an ACK
 	if (strncmp(ACK, rxBuffer, 3) != 0) {
@@ -404,7 +412,7 @@ static void registerState(void) {
 
 	do {
 		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status == -1);
+	} while (status < 1);
 
 	// Check if we got an ACK and we are now registered
 	if (strncmp(ACK, rxBuffer, 3) == 0) {
@@ -451,6 +459,10 @@ int main(void) {
 	initHardware();
 	systickInit();
 
+	// Disconnect from anything already connected
+	wlan_disconnect();
+
+	// Connecting to network
 	wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL,
 			(unsigned char*) PASSWORD, 10);
 
@@ -469,7 +481,7 @@ int main(void) {
 	while (1) {
 		CurrentState();
 
-		if((CurrentState == &streamState) &&  (StartSample == true)) {
+		if((CurrentState == &streamState) && (StartSample == true) && (DataMsgCount < 10)) {
 
 			// Start the sample
 			StartSample = false;
@@ -479,6 +491,7 @@ int main(void) {
 			do {
 				status = send(ulSocket, data, dataLength, 0);
 			} while (status != dataLength);
+			DataMsgCount++;
 
 			// Heartbeat for sending messages
 			P1OUT ^= BIT0;

@@ -81,6 +81,27 @@ bool SERVER_parseConfig(char *buffer, jsmntok_t *tokens) {
 	return true;
 }
 
+uint8_t SERVER_getACKs(char *buffer, jsmntok_t *tokens) {
+
+	jsmntok_t key = tokens[2];
+
+	// Checking for 'ackdata'
+	if(checkString(buffer, &key, ACKDATA, 7) == false) {
+		return 0;
+	}
+
+	key = tokens[3];
+	// Checking for 'ackcount'
+	if(checkString(buffer, &key, COUNT, 5) == false) {
+		return 0;
+	}
+
+	key = tokens[4];
+	if((key.type == JSMN_PRIMITIVE) && (key.end - key.start == 1)) {
+		return buffer[key.start] - '0';
+	}
+}
+
 
 char SERVER_parseStreamData(char *buffer, jsmntok_t *tokens) {
 

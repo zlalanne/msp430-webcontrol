@@ -4,6 +4,7 @@ import sys
 
 from twisted.internet.error import ConnectionDone
 from twisted.internet import protocol, threads, reactor
+from twisted.protocols.basic import LineReceiver
 from twisted.python import log
 from autobahn.websocket import WebSocketServerFactory, WebSocketServerProtocol, HttpException
 
@@ -13,24 +14,24 @@ import buffer
 import msp430_data.interface
 import msp430_data.utility
 
-class WebServerProtocol(protocol.Protocol):
+class WebServerProtocol(LineReceiver):
 
     def __init__(self):
 
         self.client = None
 
-    def dataReceived(self, data):
+    def lineReceived(self, line):
 
-        data = data.strip()
+        line = line.strip()
 
         if self.client is None:
             if self.debug:
-                log.msg("WebServerProtocol.dataReceived - No Client type")
+                log.msg("WebServerProtocol.lineReceived - No Client type")
                 # TODO: This is an untested way to kill the connection. Need
                 # to test.
-                self.transport.loseConnection()
+                self.transport.abortConnection()
         else:
-            self.client.dataReceived(data)
+            self.client.dataReceived(line)
 
     def connectionLost(self, reason=ConnectionDone):
 
@@ -123,8 +124,6 @@ class WebServerClient(common_protocol.ProtocolState):
         # Delegate the reqest to the WS factory
         self.protocol.factory.ws_factory.config_msp430(msp430)
 
-        # TODO: Perhaps change this to a proper HTTP Response
-        return 'ok'
 
 class ServerState(common_protocol.State):
     def __init__(self, client):
@@ -583,6 +582,7 @@ class MSP430StreamState(ServerState):
             data = json.loads(data)
         except ValueError:
             log.msg("MSP430StreamState.dataReceived - Problem with JSON structure")
+            log.msg(data)
             return
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
@@ -591,8 +591,6 @@ class MSP430StreamState(ServerState):
             self.client.current_state().config_io(self.delegate_config_reads, self.delegate_config_writes)
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DATA:
-
-            log.msg(data)
 
             self.datamsgcount_ack += 1
             interfaces = data['interfaces']
@@ -628,12 +626,11 @@ class MSP430StreamState(ServerState):
 
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
-                data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
-                #self.client.protocol.transport.write(json.dumps(data))
+                data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'count':self.datamsgcount_ack}
+                self.client.protocol.transport.write(json.dumps(data, sort_keys=True))
                 self.datamsgcount_ack = 0
 
             # Notify factory of new data event
-            log.msg("MSP430StreamState.dataReceived - Going to notify the factory")
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):

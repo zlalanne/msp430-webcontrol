@@ -36,6 +36,50 @@ unsigned char printOnce = 1;
 
 volatile long ulSocket;
 
+
+int recvLine(long sd, char *buf, long len, long flags) {
+
+	bool foundBoundary = false;
+	int16_t status = 0;
+	int16_t totalLength = 0;
+	int32_t bufferLength = len;
+	uint16_t currentIndex = 0;
+
+	do {
+		status = recv(sd, &buf[currentIndex], bufferLength, flags);
+		totalLength += status;
+
+		if(status >= 2) {
+
+			// Check if we hit a boundary
+			if((buf[totalLength - 2] == '\r') && (buf[totalLength - 1] == '\n')) {
+				foundBoundary = true;
+			} else {
+				currentIndex += status;
+				bufferLength -= status;
+			}
+
+		} else if(status == -1 && currentIndex == 0) {
+			// Packet timeout, nothing received yet
+			foundBoundary = true;
+
+		} else if(status == -1 && currentIndex != 0) {
+			// Started receiving some data but now getting a timeout
+			// Need to remove the timeout status from the length
+			totalLength += 1;
+		}
+
+	} while(foundBoundary == false);
+
+	// Remove the \r\n from end of packet
+	if(totalLength != -1) {
+		totalLength--;
+	}
+
+	return totalLength;
+}
+
+
 //*****************************************************************************
 //
 //! atoc
@@ -81,10 +125,9 @@ unsigned char atoc(char data) {
 //! @return none
 //!
 //! @brief  The function handles asynchronous events that come from CC3000
-//!		      device and operates a LED4 to have an on-board indication
+//!		      device
 //
 //*****************************************************************************
-
 void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 
 	if (lEventType == HCI_EVNT_WLAN_ASYNC_SIMPLE_CONFIG_DONE) {
@@ -94,7 +137,6 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 
 	if (lEventType == HCI_EVNT_WLAN_UNSOL_CONNECT) {
 		ulCC3000Connected = 1;
-
 	}
 
 	if (lEventType == HCI_EVNT_WLAN_UNSOL_DISCONNECT) {
@@ -102,12 +144,6 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 		ulCC3000DHCP = 0;
 		ulCC3000DHCP_configured = 0;
 		printOnce = 1;
-
-		// Turn off the LED3
-		turnLedOff(LED2);
-		// Turn off LED3
-		turnLedOff(LED3);
-
 	}
 
 	if (lEventType == HCI_EVNT_WLAN_UNSOL_DHCP) {
@@ -117,16 +153,10 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 
 		// only if status is OK, the flag is set to 1 and the addresses are valid
 		if (*(data + NETAPP_IPCONFIG_MAC_OFFSET)== 0){
-
 			ulCC3000DHCP = 1;
-
-			turnLedOn(LED3);
 		} else {
 			ulCC3000DHCP = 0;
-
-			turnLedOff(LED3);
 		}
-
 	}
 
 	if (lEventType == HCI_EVENT_CC3000_CAN_SHUT_DOWN) {
@@ -288,13 +318,24 @@ static void configState(void) {
 	jsmnerr_t jsonStatus;
 	bool parseStatus;
 
-	jsmn_init(&jsonParser);
+	typedef enum {
+		RECV_CONFIG,
+		SEND_CONFIG_OK,
+		RECV_RESUME
+	} step_t;
 
-	// Wait for configuration
-	do {
+	static step_t step = RECV_CONFIG;
+
+	switch(step) {
+
+	// Trying to receive the configuration
+	case RECV_CONFIG:
+
 		status = recv(ulSocket, rxBuffer, 256, 0);
 
 		if (status > 0) {
+			jsmn_init(&jsonParser);
+
 			// Parse JSON
 			rxBuffer[status] = '\0';
 			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
@@ -303,56 +344,64 @@ static void configState(void) {
 			if(jsonStatus == JSMN_SUCCESS) {
 				parseStatus = SERVER_parseConfig(rxBuffer, tokens);
 			} else {
-				status = -1;
+				parseStatus = false;
 			}
 
 			// Putting the configuration in place
 			if(parseStatus == true) {
 				parseStatus = SERVER_setConfig(rxBuffer, tokens);
-			} else {
-				status = -1;
 			}
 
-			// Responding that the configuration is valid
 			if (parseStatus == true) {
-				do {
-					status = send(ulSocket, CONFIG_OK, 4, 0);
-				} while (status != 4);
+				step = SEND_CONFIG_OK;
+			}
+		}
+		break;
 
-				SERVER_initInterfaces();
+	// Sending that the configuration is valid
+	case SEND_CONFIG_OK:
+
+		do {
+			status = send(ulSocket, CONFIG_OK, 6, 0);
+		} while (status != 6);
+
+		SERVER_initInterfaces();
+
+		step = RECV_RESUME;
+		break;
+
+	// Waiting for resume streaming
+	case RECV_RESUME:
+
+		status = recv(ulSocket, rxBuffer, 256, 0);
+
+		if(status > 0) {
+
+			// Parse JSON
+			rxBuffer[status] = '\0';
+			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+			if (jsonStatus == JSMN_SUCCESS) {
+				parseStatus = SERVER_resumeStream(rxBuffer, tokens);
+			} else {
+				parseStatus = false;
+			}
+
+			if(parseStatus == true) {
 				DataMsgCount = 0;
 				CurrentState = streamState;
 
 				// Start Timer
 				TIMER_A_clear(SYSTICK_BASE);
-			    TIMER_A_startCounter(SYSTICK_BASE,
+				TIMER_A_startCounter(SYSTICK_BASE,
 					TIMER_A_UP_MODE);
-			} else {
-				status = -1;
+
+				// Start at RECV_CONFIG if we get reconfigured
+				step = RECV_CONFIG;
 			}
 		}
-	} while (status == -1);
-
-	// Wait until resume streaming
-	do {
-		status = recv(ulSocket, rxBuffer, 256, 0);
-
-		// Parse JSON
-		rxBuffer[status] = '\0';
-		jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
-
-		if (jsonStatus == JSMN_SUCCESS) {
-			parseStatus = SERVER_resumeStream(rxBuffer, tokens);
-		} else {
-			status = -1;
-		}
-
-		if (parseStatus == false) {
-			status = -1;
-		}
-
-	} while (status == -1);
-
+		break;
+	}
 }
 
 /**
@@ -367,56 +416,105 @@ static void registerState(void) {
 	int32_t status = 0;
 	sockaddr socketAddress;
 
-	// The family is always AF_INET
-	socketAddress.sa_family = AF_INET;
+	// Steps for this state
+	typedef enum {
+		CONNECT_SOCKET,
+		SEND_REG,
+		ACK_REG_REQUEST,
+		SEND_MAC,
+		ACK_MAC
+	} step_t;
 
-	// The destination port
-	socketAddress.sa_data[0] = PORT_FIRST;
-	socketAddress.sa_data[1] = PORT_SECOND;
+	static step_t step = CONNECT_SOCKET;
 
-	// The destination IP address
-	socketAddress.sa_data[2] = IP_FIRST;
-	socketAddress.sa_data[3] = IP_SECOND;
-	socketAddress.sa_data[4] = IP_THIRD;
-	socketAddress.sa_data[5] = IP_FOURTH;
+	// Determine which step of registration we are on
+	switch(step) {
 
-	do {
-		status = connect(ulSocket, &socketAddress, sizeof(sockaddr));
-	} while (status == -1);
+	// Connect socket to server
+	case CONNECT_SOCKET:
+		// The family is always AF_INET
+		socketAddress.sa_family = AF_INET;
 
-	dataLength = 3;
-	do {
-		status = send(ulSocket, txBuffer, dataLength, 0);
-	} while (status != dataLength);
+		// The destination port
+		socketAddress.sa_data[0] = PORT_FIRST;
+		socketAddress.sa_data[1] = PORT_SECOND;
 
-	do {
-		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status < 1);
+		// The destination IP address
+		socketAddress.sa_data[2] = IP_FIRST;
+		socketAddress.sa_data[3] = IP_SECOND;
+		socketAddress.sa_data[4] = IP_THIRD;
+		socketAddress.sa_data[5] = IP_FOURTH;
 
-	// Check if we got something besides an ACK
-	if (strncmp(ACK, rxBuffer, 3) != 0) {
-		return;
-	}
+		do {
+			status = connect(ulSocket, &socketAddress, sizeof(sockaddr));
+		} while (status == -1);
 
-	do {
-		status = nvmem_get_mac_address(mac);
-	} while (status != 0);
+		step = SEND_REG;
+		break;
 
-	// Get the MAC address and convert to ASCII string
-	dataLength = sprintf(&txBuffer[0], "%x:%x:%x:%x:%x:%x", mac[0], mac[1],
-			mac[2], mac[3], mac[4], mac[5]);
+	// Send registration request
+	case SEND_REG:
 
-	do {
-		status = send(ulSocket, txBuffer, dataLength, 0);
-	} while (status != dataLength);
+		// Sending the register request - 'reg'
+		dataLength = 5;
+		do {
+			status = send(ulSocket, txBuffer, dataLength, 0);
+		} while (status != dataLength);
 
-	do {
-		status = recv(ulSocket, rxBuffer, 4, 0);
-	} while (status < 1);
+		step = ACK_REG_REQUEST;
+		break;
 
-	// Check if we got an ACK and we are now registered
-	if (strncmp(ACK, rxBuffer, 3) == 0) {
-		CurrentState = configState;
+	// Get registration request ACK
+	case ACK_REG_REQUEST:
+
+		// Waiting for the register request ack
+		do {
+			status = recv(ulSocket, rxBuffer, 4, 0);
+		} while (status < 1);
+
+		// Check if we got an ACK
+		if (memcmp(ACK, rxBuffer, 3) != 0) {
+			step = SEND_REG;
+		} else {
+			step = SEND_MAC;
+		}
+		break;
+
+	// Send the MAC address
+	case SEND_MAC:
+
+		do {
+			status = nvmem_get_mac_address(mac);
+		} while (status != 0);
+
+		// Get the MAC address and convert to ASCII string
+		dataLength = sprintf(&txBuffer[0], "%x:%x:%x:%x:%x:%x\r\n", mac[0], mac[1],
+				mac[2], mac[3], mac[4], mac[5]);
+
+		do {
+			status = send(ulSocket, txBuffer, dataLength, 0);
+		} while (status != dataLength);
+
+		step = ACK_MAC;
+		break;
+
+	// Get MAC address ACK
+	case ACK_MAC:
+
+		do {
+			status = recv(ulSocket, rxBuffer, 4, 0);
+		} while (status < 1);
+
+		// Check if we got an ACK and we are now registered
+		if (memcmp(ACK, rxBuffer, 3) == 0) {
+			CurrentState = configState;
+
+			// Reset the step in case we need to re register
+			step = CONNECT_SOCKET;
+		} else {
+			step = SEND_MAC;
+		}
+		break;
 	}
 }
 

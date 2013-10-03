@@ -15,7 +15,7 @@ static const unsigned char PASSWORD[] = "15e9d02578";
 #define IP_FIRST	192
 #define IP_SECOND	168
 #define IP_THIRD	0
-#define IP_FOURTH	74
+#define IP_FOURTH	80
 
 #define PORT_FIRST	0x1F
 #define PORT_SECOND	0x9A
@@ -23,11 +23,11 @@ static const unsigned char PASSWORD[] = "15e9d02578";
 // Commands used to interact with server
 #define DATA_HEADER			"{\"cmd\":\"data\",\"interfaces\":{"
 #define DATA_HEADER_LEN		28
-#define DATA_FOOTER			"}}"
-#define DATA_FOOTER_LEN		2
+#define DATA_FOOTER			"}}\r\n"
+#define DATA_FOOTER_LEN		4
 
 #define CMD				"cmd"
-#define REGISTER		"reg"
+#define REGISTER		"reg\r\n"
 #define CONFIG 			"config"
 #define PAYLOAD			"payload"
 #define PIN				"pin"
@@ -39,12 +39,12 @@ static const unsigned char PASSWORD[] = "15e9d02578";
 #define WRITEDATA		"writedata"
 #define DROPCONFIG		"dropconfig"
 
-#define CONFIG_OK		"c_ok"
+#define CONFIG_OK		"c_ok\r\n"
 #define RESUME_STREAM	"resume"
 
 // Responses from server
-#define ACK			"ack"
-#define NACK		"nack"
+#define ACK			"ack\r\n"
+#define NACK		"nack\r\n"
 
 
 

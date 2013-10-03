@@ -99,6 +99,9 @@ uint8_t SERVER_getACKs(char *buffer, jsmntok_t *tokens) {
 	key = tokens[4];
 	if((key.type == JSMN_PRIMITIVE) && (key.end - key.start == 1)) {
 		return buffer[key.start] - '0';
+	} else {
+		// TODO: Change this to a sentinel
+		return 0;
 	}
 }
 

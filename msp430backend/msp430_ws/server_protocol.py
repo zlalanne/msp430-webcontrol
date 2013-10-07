@@ -29,7 +29,7 @@ class WebServerProtocol(LineReceiver):
                 log.msg("WebServerProtocol.lineReceived - No Client type")
                 # TODO: This is an untested way to kill the connection. Need
                 # to test.
-                self.transport.abortConnection()
+                self.transport.loseConnection()
         else:
             self.client.dataReceived(line)
 
@@ -393,13 +393,13 @@ class MSP430RegisterState(ServerState):
                 self.re_message_count += 1
                 if self.client.protocol.debug:
                     log.msg("MSP430Client.dataReceived - Registration Request")
-                self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
+                self.client.protocol.sendLine(common_protocol.ServerCommands.ACK)
             else:
-                self.client.protocol.transport.write(common_protocol.ServerCommands.NACK)
+                self.client.protocol.sendLine(common_protocol.ServerCommands.NACK)
 
         elif self.re_message_count == 1 and not self.registered:
 
-            self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
+            self.client.protocol.sendLine(common_protocol.ServerCommands.ACK)
 
             def interface_desc(ifaces):
                 # List of classes that resemble I/O. Creating a struct based on
@@ -533,7 +533,7 @@ class MSP430ConfigState(ServerState):
         msg = {'cmd':common_protocol.ServerCommands.CONFIG,
                'payload':self.config_interfaces}
 
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
 
 class MSP430StreamState(ServerState):
@@ -627,7 +627,7 @@ class MSP430StreamState(ServerState):
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
                 data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'count':self.datamsgcount_ack}
-                self.client.protocol.transport.write(json.dumps(data, sort_keys=True))
+                self.client.protocol.sendLine(json.dumps(data, sort_keys=True))
                 self.datamsgcount_ack = 0
 
             # Notify factory of new data event
@@ -635,11 +635,11 @@ class MSP430StreamState(ServerState):
 
     def resume_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.RESUME_STREAMING}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def pause_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.PAUSE_STREAMING}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def write_interface_data(self, key, value):
         # Removes the EQ from the key sent by the client
@@ -649,12 +649,12 @@ class MSP430StreamState(ServerState):
         payload = {'opcode': opcode, 'pin' : pin, 'value' : str(value)}
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
                'payload': payload}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def drop_to_config(self, reads, writes):
         # Drop remote MSP430 to config state
         msg = {'cmd':common_protocol.ServerCommands.DROP_TO_CONFIG}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
         self.delegate_config_reads = reads
         self.delegate_config_writes = writes
 

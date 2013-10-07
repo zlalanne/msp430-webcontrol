@@ -1,117 +1,163 @@
-#include <msp430.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-
 #include "board.h"
-#include "spi.h"
+#include "server.h"
+#include "server_protocol.h"
+#include "interface.h"
 
+#include "spi.h"
 #include "wlan.h"
 #include "hci.h"
 #include "netapp.h"
 #include "socket.h"
 #include "nvmem.h"
-
-#include "driverlib.h"
 #include "jsmn.h"
+#include "driverlib.h"
 
-#include "server.h"
-#include "server_protocol.h"
-#include "interface.h"
-
-volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
-		OkToDoShutDown, ulCC3000DHCP_configured;
-
-volatile unsigned char ucStopSmartConfig;
-
-bool StartSample = false;
-
-// Keeps track of how many data messages have not been acked. Will stop streaming
-// data if this number reaches 10
-uint8_t DataMsgCount = 0;
-
-unsigned char printOnce = 1;
+#include <msp430.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 
 #define NETAPP_IPCONFIG_MAC_OFFSET				(20)
 
-volatile long ulSocket;
+volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
+		OkToDoShutDown, ulCC3000DHCP_configured;
+volatile unsigned char ucStopSmartConfig;
+
+// Flag used for indicating when to sample
+static bool StartSample = false;
+
+// Keeps track of how many data messages have not been acked. Will stop streaming
+// data if this number reaches 10
+static uint8_t DataMsgCount = 0;
+
+// Socket for communicating with backend server
+static volatile long Socket;
 
 
+/**
+ * recvLine
+ *
+ * Modified version of the BSD socket recv function that buffers the
+ * data and returns a string only once a line ending boundary is found
+ */
 int recvLine(long sd, char *buf, long len, long flags) {
 
+	static char buffer[MAX_RX_BUFFER];
+	static uint16_t bufferUsed = 0;
+
+	char *lineBegin = &buffer[0];
+	char *lineEnd;
+
+	uint16_t bufferRemain = MAX_RX_BUFFER - bufferUsed;
+
 	bool foundBoundary = false;
-	int16_t status = 0;
+	int16_t rv = 0;
 	int16_t totalLength = 0;
-	int32_t bufferLength = len;
-	uint16_t currentIndex = 0;
 
 	do {
-		status = recv(sd, &buf[currentIndex], bufferLength, flags);
-		totalLength += status;
 
-		if(status >= 2) {
+		// Check if there is boundary in the current data
+		lineEnd = strstr(buffer, "\r\n");
 
-			// Check if we hit a boundary
-			if((buf[totalLength - 2] == '\r') && (buf[totalLength - 1] == '\n')) {
-				foundBoundary = true;
+		if(lineEnd == NULL){
+
+			bufferRemain = MAX_RX_BUFFER - bufferUsed;
+			if(bufferRemain > 0) {
+				rv = recv(sd, &buffer[bufferUsed], bufferRemain, flags);
 			} else {
-				currentIndex += status;
-				bufferLength -= status;
+				// Get stuck here for now
+				while(1);
 			}
 
-		} else if(status == -1 && currentIndex == 0) {
-			// Packet timeout, nothing received yet
-			foundBoundary = true;
+			if (rv <= 0) {
+				// Error or no data, exit the function
+				foundBoundary = true;
+				totalLength = 0;
+			} else {
+				bufferUsed += rv;
+				bufferRemain -= rv;
+			}
 
-		} else if(status == -1 && currentIndex != 0) {
-			// Started receiving some data but now getting a timeout
-			// Need to remove the timeout status from the length
-			totalLength += 1;
+		} else {
+
+			// Copy the data to the buffer
+			if((lineEnd - lineBegin) < len) {
+
+				// Remove the newline characters
+				*lineEnd = 0;
+				*(lineEnd + 1) = 0;
+
+				totalLength = lineEnd - lineBegin;
+				memcpy(buf, lineBegin, totalLength);
+				memmove(&buffer[0], lineEnd + 2, bufferUsed - (totalLength + 2));
+				bufferUsed -= (totalLength + 2);
+			} else {
+
+				lineEnd = lineBegin + len + 1;
+				totalLength = len;
+				memcpy(buf, lineBegin, totalLength);
+				memmove(&buffer[0], lineEnd, bufferUsed - totalLength);
+				bufferUsed -= (totalLength);
+			}
+
+			foundBoundary = true;
 		}
 
 	} while(foundBoundary == false);
 
-	// Remove the \r\n from end of packet
-	if(totalLength != -1) {
-		totalLength--;
-	}
-
 	return totalLength;
 }
 
+static int sendLine(long sd, const char *buf, long len, long flags) {
 
-//*****************************************************************************
-//
-//! atoc
-//!
-//! @param  none
-//!
-//! @return none
-//!
-//! @brief  Convert nibble to hexdecimal from ASCII
-//
-//*****************************************************************************
-unsigned char atoc(char data) {
-	unsigned char ucRes;
+	char buffer[CC3000_TX_BUFFER_SIZE];
 
-	if ((data >= '0') && (data <= '9')) {
-		ucRes = data - '0';
-	} else {
-		if (data == 'a') {
-			ucRes = 0x0a;
-		} else if (data == 'b') {
-			ucRes = 0x0b;
-		} else if (data == 'c') {
-			ucRes = 0x0c;
-		} else if (data == 'd') {
-			ucRes = 0x0d;
-		} else if (data == 'e') {
-			ucRes = 0x0e;
-		} else if (data == 'f') {
-			ucRes = 0x0f;
+	bool dataSent = false;
+
+	int16_t snd;
+	int32_t dataLeft = len;
+	int32_t chunkSize;
+	int32_t dataLength;
+	int32_t totalLength = 0;
+	uint16_t bufferIndex = 0;
+
+	do {
+
+		if(dataLeft < CC3000_TX_BUFFER_SIZE - 3) {
+			dataLength = dataLeft;
+			chunkSize = dataLeft + 2;
+			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
+			buffer[dataLength] = '\r';
+			buffer[dataLength + 1] = '\n';
+		} else {
+			dataLength = CC3000_TX_BUFFER_SIZE - 1;
+			chunkSize = dataLength;
+			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
 		}
-	}
-	return ucRes;
+
+		snd = send(sd, &buffer[0], chunkSize, flags);
+
+		if(snd <= 0) {
+			// Error occured
+			dataSent = true;
+			totalLength = snd;
+		} else if(snd == chunkSize) {
+			dataLeft -= dataLength;
+			totalLength += dataLength;
+			bufferIndex += dataLength;
+
+			if(dataLeft == 0) {
+				dataSent = true;
+			}
+
+		} else {
+			// CC3000 didn't send the whole data?
+			while(1);
+		}
+
+	} while(dataSent == false);
+
+	return totalLength;
 }
 
 //*****************************************************************************
@@ -143,7 +189,6 @@ void CC3000_UsynchCallback(long lEventType, char * data, unsigned char length) {
 		ulCC3000Connected = 0;
 		ulCC3000DHCP = 0;
 		ulCC3000DHCP_configured = 0;
-		printOnce = 1;
 	}
 
 	if (lEventType == HCI_EVNT_WLAN_UNSOL_DHCP) {
@@ -229,7 +274,6 @@ static void initHardware(void) {
 	// Trigger a WLAN device
 	wlan_start(0);
 
-	turnLedOn(LED1);
 	// Mask out all non-required events from CC3000
 	wlan_set_event_mask(
 			HCI_EVNT_WLAN_KEEPALIVE | HCI_EVNT_WLAN_UNSOL_INIT
@@ -253,22 +297,6 @@ static void systickInit(void) {
         TIMER_A_DO_CLEAR);
 }
 
-unsigned short atoshort(char b1, char b2) {
-	unsigned short usRes;
-
-	usRes = (atoc(b1)) * 16 | atoc(b2);
-
-	return usRes;
-}
-
-unsigned char ascii_to_char(char b1, char b2) {
-	unsigned char ucRes;
-
-	ucRes = (atoc(b1)) << 4 | (atoc(b2));
-
-	return ucRes;
-}
-
 static void (*CurrentState)(void);
 
 static void streamState(void) {
@@ -281,7 +309,7 @@ static void streamState(void) {
 	jsmnerr_t jsonStatus;
 
 	// Waiting for new data or configuration
-	status = recv(ulSocket, rxBuffer, 256, 0);
+	status = recvLine(Socket, rxBuffer, 256, 0);
 	if(status > 0) {
 
 		// Parse JSON
@@ -309,6 +337,7 @@ static void streamState(void) {
 		}
 	}
 }
+
 static void configState(void) {
 
 	char rxBuffer[256];
@@ -331,7 +360,7 @@ static void configState(void) {
 	// Trying to receive the configuration
 	case RECV_CONFIG:
 
-		status = recv(ulSocket, rxBuffer, 256, 0);
+		status = recvLine(Socket, rxBuffer, 256, 0);
 
 		if (status > 0) {
 			jsmn_init(&jsonParser);
@@ -362,8 +391,8 @@ static void configState(void) {
 	case SEND_CONFIG_OK:
 
 		do {
-			status = send(ulSocket, CONFIG_OK, 6, 0);
-		} while (status != 6);
+			status = sendLine(Socket, CONFIG_OK, 4, 0);
+		} while (status != 4);
 
 		SERVER_initInterfaces();
 
@@ -373,7 +402,7 @@ static void configState(void) {
 	// Waiting for resume streaming
 	case RECV_RESUME:
 
-		status = recv(ulSocket, rxBuffer, 256, 0);
+		status = recvLine(Socket, rxBuffer, 256, 0);
 
 		if(status > 0) {
 
@@ -412,7 +441,7 @@ static void registerState(void) {
 	char txBuffer[64] = REGISTER;
 	uint8_t mac[6];
 	uint16_t dataLength;
-	char rxBuffer[4];
+	char rxBuffer[8];
 	int32_t status = 0;
 	sockaddr socketAddress;
 
@@ -446,7 +475,7 @@ static void registerState(void) {
 		socketAddress.sa_data[5] = IP_FOURTH;
 
 		do {
-			status = connect(ulSocket, &socketAddress, sizeof(sockaddr));
+			status = connect(Socket, &socketAddress, sizeof(sockaddr));
 		} while (status == -1);
 
 		step = SEND_REG;
@@ -456,9 +485,9 @@ static void registerState(void) {
 	case SEND_REG:
 
 		// Sending the register request - 'reg'
-		dataLength = 5;
+		dataLength = 3;
 		do {
-			status = send(ulSocket, txBuffer, dataLength, 0);
+			status = sendLine(Socket, txBuffer, dataLength, 0);
 		} while (status != dataLength);
 
 		step = ACK_REG_REQUEST;
@@ -469,7 +498,7 @@ static void registerState(void) {
 
 		// Waiting for the register request ack
 		do {
-			status = recv(ulSocket, rxBuffer, 4, 0);
+			status = recvLine(Socket, rxBuffer, 8, 0);
 		} while (status < 1);
 
 		// Check if we got an ACK
@@ -488,11 +517,11 @@ static void registerState(void) {
 		} while (status != 0);
 
 		// Get the MAC address and convert to ASCII string
-		dataLength = sprintf(&txBuffer[0], "%x:%x:%x:%x:%x:%x\r\n", mac[0], mac[1],
+		dataLength = sprintf(&txBuffer[0], "%x:%x:%x:%x:%x:%x", mac[0], mac[1],
 				mac[2], mac[3], mac[4], mac[5]);
 
 		do {
-			status = send(ulSocket, txBuffer, dataLength, 0);
+			status = sendLine(Socket, txBuffer, dataLength, 0);
 		} while (status != dataLength);
 
 		step = ACK_MAC;
@@ -502,14 +531,14 @@ static void registerState(void) {
 	case ACK_MAC:
 
 		do {
-			status = recv(ulSocket, rxBuffer, 4, 0);
+			status = recvLine(Socket, rxBuffer, 8, 0);
 		} while (status < 1);
 
 		// Check if we got an ACK and we are now registered
 		if (memcmp(ACK, rxBuffer, 3) == 0) {
 			CurrentState = configState;
 
-			// Reset the step in case we need to re register
+			// Reset the step in case we need to re-register
 			step = CONNECT_SOCKET;
 		} else {
 			step = SEND_MAC;
@@ -518,30 +547,6 @@ static void registerState(void) {
 	}
 }
 
-#pragma vector = SYSTICK_VECTOR
-__interrupt void SYSTICK(void) {
-	switch (__even_in_range(TA0IV, 0x0E)) {
-	case 0x02:
-		break; // Vector 0x0: CCR1
-	case 0x04:
-		break; // Vector 0x02: CCR2
-	case 0x06:
-		break; // Vector 0x04: CCR3
-	case 0x08:
-		break; // Vector 0x06: CCR4
-	case 0x0A:
-		break; // Vector 0x08: CCR5
-	case 0x0C:
-		break; // Vector 0x0A: CCR6
-	case 0x0E: // Vector 0x0E: TAxCTL TAIFG
-		StartSample = true; // Set the system tick flag
-		__bic_SR_register_on_exit(LPM4_bits);
-		// Exit LPM on exit
-		break;
-	default:
-		break;
-	}
-}
 
 int main(void) {
 
@@ -561,17 +566,19 @@ int main(void) {
 	wlan_disconnect();
 
 	// Connecting to network
-	wlan_connect(WLAN_SEC_WPA2, (char*) SSID, 7, NULL,
-			(unsigned char*) PASSWORD, 10);
+	wlan_connect(WLAN_SEC_UNSEC, (char*) SSID, 6, NULL,
+			(unsigned char*) PASSWORD, 0);
 
 	while ((ulCC3000Connected == 0) || (ulCC3000DHCP == 0));
 
-	do {
-		ulSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	} while (ulSocket == -1);
+	P1OUT |= BIT0;
 
 	do {
-		status = setsockopt(ulSocket, SOL_SOCKET, SOCKOPT_RECV_TIMEOUT, &timeout, sizeof(timeout));
+		Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	} while (Socket == -1);
+
+	do {
+		status = setsockopt(Socket, SOL_SOCKET, SOCKOPT_RECV_TIMEOUT, &timeout, sizeof(timeout));
 	} while(status == -1);
 
 	CurrentState = registerState;
@@ -587,13 +594,38 @@ int main(void) {
 
 			// Send the data
 			do {
-				status = send(ulSocket, data, dataLength, 0);
+				status = sendLine(Socket, data, dataLength, 0);
 			} while (status != dataLength);
 			DataMsgCount++;
 
 			// Heartbeat for sending messages
 			P1OUT ^= BIT0;
 		}
+	}
+}
+
+#pragma vector = SYSTICK_VECTOR
+__interrupt void SYSTICK(void) {
+	switch (__even_in_range(TA0IV, 0x0E)) {
+	case 0x02:
+		break; // Vector 0x0: CCR1
+	case 0x04:
+		break; // Vector 0x02: CCR2
+	case 0x06:
+		break; // Vector 0x04: CCR3
+	case 0x08:
+		break; // Vector 0x06: CCR4
+	case 0x0A:
+		break; // Vector 0x08: CCR5
+	case 0x0C:
+		break; // Vector 0x0A: CCR6
+	case 0x0E: // Vector 0x0E: TAxCTL TAIFG
+		StartSample = true; // Start a new sample
+		__bic_SR_register_on_exit(LPM4_bits);
+		// Exit LPM on exit
+		break;
+	default:
+		break;
 	}
 }
 

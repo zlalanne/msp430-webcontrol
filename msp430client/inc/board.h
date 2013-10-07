@@ -36,6 +36,7 @@
 #ifndef BOARD_H
 #define	BOARD_H
 
+#include <stdint.h>
 
 #define RF_CS           BIT2
 #define RF_CS_SEL       P2SEL

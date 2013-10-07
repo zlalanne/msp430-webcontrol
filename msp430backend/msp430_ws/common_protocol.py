@@ -24,7 +24,7 @@ class State(object):
 
 class ServerCommands(object):
     AUTH = 'auth'
-    ACK = 'ack' 
+    ACK = 'ack'
     NACK = 'nack'
     CONFIG = 'config'
     DROP_TO_CONFIG = 'dropconfig'

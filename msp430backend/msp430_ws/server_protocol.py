@@ -4,6 +4,7 @@ import sys
 
 from twisted.internet.error import ConnectionDone
 from twisted.internet import protocol, threads, reactor
+from twisted.protocols.basic import LineReceiver
 from twisted.python import log
 from autobahn.websocket import WebSocketServerFactory, WebSocketServerProtocol, HttpException
 
@@ -13,24 +14,24 @@ import buffer
 import msp430_data.interface
 import msp430_data.utility
 
-class WebServerProtocol(protocol.Protocol):
+class WebServerProtocol(LineReceiver):
 
     def __init__(self):
 
         self.client = None
 
-    def dataReceived(self, data):
+    def lineReceived(self, line):
 
-        data = data.strip()
+        line = line.strip()
 
         if self.client is None:
             if self.debug:
-                log.msg("WebServerProtocol.dataReceived - No Client type")
+                log.msg("WebServerProtocol.lineReceived - No Client type")
                 # TODO: This is an untested way to kill the connection. Need
                 # to test.
                 self.transport.loseConnection()
         else:
-            self.client.dataReceived(data)
+            self.client.dataReceived(line)
 
     def connectionLost(self, reason=ConnectionDone):
 
@@ -44,10 +45,8 @@ class WebServerProtocol(protocol.Protocol):
 
     def connectionMade(self):
         if self.transport.getPeer().host == settings.SITE_SERVER:
-            log.msg("Coming from the web server")
             self.client = WebServerClient(self)
         else:
-            log.msg("Coming from an MSP430")
             self.client = MSP430Client(self)
 
         self.client.connectionMade()
@@ -55,7 +54,7 @@ class WebServerProtocol(protocol.Protocol):
     def register_msp430(self):
         """This sends a http request to the django appliaction. This effictevely
         enters the MSP430 into the database of the django application. It then
-        tells the websocket server to alter the user that a new MSP430 has
+        tells the websocket server to alert the user that a new MSP430 has
         come online"""
 
 
@@ -125,8 +124,6 @@ class WebServerClient(common_protocol.ProtocolState):
         # Delegate the reqest to the WS factory
         self.protocol.factory.ws_factory.config_msp430(msp430)
 
-        # TODO: Perhaps change this to a proper HTTP Response
-        return 'ok'
 
 class ServerState(common_protocol.State):
     def __init__(self, client):
@@ -193,6 +190,7 @@ class UserClient(WebSocketClient):
         self.paused = True
 
     def copy_and_send(self):
+
         if self.ackcount <= -10 or self.paused:
             return
 
@@ -392,14 +390,16 @@ class MSP430RegisterState(ServerState):
             # TODO: Add some MSP430 authentication here
 
             if data == common_protocol.ServerCommands.REGISTER:
-                self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
                 self.re_message_count += 1
                 if self.client.protocol.debug:
                     log.msg("MSP430Client.dataReceived - Registration Request")
+                self.client.protocol.sendLine(common_protocol.ServerCommands.ACK)
             else:
-                self.client.protocol.transport.write(common_protocol.ServerCommands.NACK)
+                self.client.protocol.sendLine(common_protocol.ServerCommands.NACK)
 
         elif self.re_message_count == 1 and not self.registered:
+
+            self.client.protocol.sendLine(common_protocol.ServerCommands.ACK)
 
             def interface_desc(ifaces):
                 # List of classes that resemble I/O. Creating a struct based on
@@ -431,7 +431,6 @@ class MSP430RegisterState(ServerState):
             if self.client.protocol.debug:
                 log.msg("MSP430Client.dataReceived - Successful Registration")
 
-            self.client.protocol.transport.write(common_protocol.ServerCommands.ACK)
             self.client.push_state(MSP430ConfigState(self.client))
 
             # Add to dictionary of clients in the WS factory
@@ -534,7 +533,7 @@ class MSP430ConfigState(ServerState):
         msg = {'cmd':common_protocol.ServerCommands.CONFIG,
                'payload':self.config_interfaces}
 
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
 
 class MSP430StreamState(ServerState):
@@ -579,12 +578,11 @@ class MSP430StreamState(ServerState):
         self.client.protocol.factory.ws_factory.notify_clients_msp430_state_change(self.client.protocol, state='stream')
 
     def dataReceived(self, data):
-        log.msg("MSP430StreamState.dataReceived - Data Received:%s" % data)
-
         try:
             data = json.loads(data)
         except ValueError:
             log.msg("MSP430StreamState.dataReceived - Problem with JSON structure")
+            log.msg(data)
             return
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
@@ -593,8 +591,6 @@ class MSP430StreamState(ServerState):
             self.client.current_state().config_io(self.delegate_config_reads, self.delegate_config_writes)
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DATA:
-
-            log.msg(data)
 
             self.datamsgcount_ack += 1
             interfaces = data['interfaces']
@@ -605,10 +601,11 @@ class MSP430StreamState(ServerState):
                 cls = getattr(msp430_data.interface, cls_name)
 
                 for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if choice_pin == pin:
+                    if pin == choice_value:
                         break
                 else:
                     choice_key = "ERROR"
+                    log.msg("MSP430StreamState.dataReceived - Error parsing incoming data for pin")
                     continue
 
                 new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
@@ -626,50 +623,11 @@ class MSP430StreamState(ServerState):
 
 
             # Ignoring the equations for now
-            """
-            for key, value in interfaces.iteritems():
-                self.read_data_buffer[key] = value
-                # perform equation operations here on values
-                # key: 'cls:%s, port:%d, eq:%s'
-                if key in self.config_reads:
-                    for eq in self.config_reads[key]['equations']:
-                        new_key = 'cls:%s, port:%d, eq:%s' % (
-                            self.config_reads[key]['cls_name'],
-                            self.config_reads[key]['ch_port'],
-                            eq,
-                        )
-                        self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, value)
-                else:
-                    # TODO: drop to config state or something, remote config seems to be invalid
-                    log.msg("MSP430StreamState - Remote config invalid")
 
-            if self.client.protocol.debug:
-                log.msg('MSP430StreamState - EQs: %s' % str(self.read_data_buffer_eq))
-            for key, value in write_data.iteritems():
-                # Equations for write interfaces are applied on the returned value
-                # Input value to interfaces are unchanged
-                self.write_data_buffer[key] = value
-                # Key: 'cls:%s, port:%d, eq:%s'
-                if key in self.config_writes:
-                    for eq in self.config_writes[key]['equations']:
-                        new_key = 'cls:%s, port:%d, eq:%s' % (
-                            self.config_writes[key]['cls_name'],
-                            self.config_writes[key]['ch_port'],
-                            eq,
-                        )
-                        self.write_data_eq_map[new_key] = key
-                        self.write_data_buffer_eq[new_key] = {
-                            'calculated':self.evaluate_eq(eq, value),
-                            'real':value,
-                        }
-                else:
-                    # TODO: drop to config state or something, remote config seems to be invalid
-                    log.msg("MSP430StreamState - Remote config invalid")
-            """
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
-                data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'ack_count':self.datamsgcount_ack}
-                #self.client.protocol.transport.write(json.dumps(data))
+                data = {'cmd':common_protocol.ServerCommands.ACK_DATA, 'count':self.datamsgcount_ack}
+                self.client.protocol.sendLine(json.dumps(data, sort_keys=True))
                 self.datamsgcount_ack = 0
 
             # Notify factory of new data event
@@ -677,11 +635,11 @@ class MSP430StreamState(ServerState):
 
     def resume_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.RESUME_STREAMING}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def pause_streaming(self):
         msg = {'cmd':common_protocol.ServerCommands.PAUSE_STREAMING}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def write_interface_data(self, key, value):
         # Removes the EQ from the key sent by the client
@@ -691,12 +649,12 @@ class MSP430StreamState(ServerState):
         payload = {'opcode': opcode, 'pin' : pin, 'value' : str(value)}
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
                'payload': payload}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
 
     def drop_to_config(self, reads, writes):
         # Drop remote MSP430 to config state
         msg = {'cmd':common_protocol.ServerCommands.DROP_TO_CONFIG}
-        self.client.protocol.transport.write(json.dumps(msg))
+        self.client.protocol.sendLine(json.dumps(msg))
         self.delegate_config_reads = reads
         self.delegate_config_writes = writes
 
@@ -763,11 +721,12 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
         # safari
         self.allowHixie76 = True
 
-        # identify rpi's by their macs
-        # identify user by peerstr
+        # Identify MSP430's by their macs
+        # Identify user by peerstr
         self.msp430_clients = {}
         self.user_client = {}
-        # key RPI mac, value list of user clients
+
+        # Key MSP430 mac, value list of user clients
         self.msp430_clients_registered_users = {}
 
     def register_user_to_msp430(self, client, msp430):
@@ -826,7 +785,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
     def register_msp430(self, msp430):
         # This is called when the MSP430 has been authenticated with the WS server
         # register on the site server
-        reactor.callInThread(msp430.protocol.register_msp430)
+        msp430.protocol.register_msp430()
 
         # register locally to the factory
         self.msp430_clients[msp430.mac] = msp430
@@ -843,8 +802,11 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
             if self.debug:
                 log.msg("MSP430SocketServerFactory.disconnect_msp430 - %s msp430 disconnected" % (msp430.mac,))
             reactor.callInThread(msp430.protocol.disconnect_msp430)
-            del self.msp430_clients[msp430.mac]
-            del self.msp430_clients_registered_users[msp430.mac]
+            try:
+                del self.msp430_clients[msp430.mac]
+                del self.msp430_clients_registered_users[msp430.mac]
+            except KeyError:
+                log.msg(self.msp430_clients)
 
     def disconnect_msp430_wsite(self, msp430):
         """Called after MSP430 has been disconnected from web server"""
@@ -866,7 +828,7 @@ class MSP430SocketServerFactory(WebSocketServerFactory):
 
         Return: True/False for success
         """
-        # check if RPI is actually an active client
+        # Check if MSP430 is actually an active client
         mac = configs['mac']
         if mac not in self.msp430_clients:
             return False

@@ -5,7 +5,7 @@ Project started to enable controlling an MSP430 over WiFi.
 
 Current development is being done on develop branch and master provides a "stable" version.
 
-Old release information can be found in [a relative link](HISTORY.md)
+Old release information can be found in [here.](HISTORY.md)
 
 
 Backend Server

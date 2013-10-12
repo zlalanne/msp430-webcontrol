@@ -18,6 +18,8 @@
 #include <string.h>
 
 #define NETAPP_IPCONFIG_MAC_OFFSET				(20)
+#define HEADERS_SIZE_DATA       (SPI_HEADER_SIZE + 5)
+#define HCI_CMND_SEND_ARG_LENGTH	(16)
 
 volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
 		OkToDoShutDown, ulCC3000DHCP_configured;
@@ -32,6 +34,14 @@ static uint8_t DataMsgCount = 0;
 
 // Socket for communicating with backend server
 static volatile long Socket;
+
+// Function pointer that points to the current state the MSP430 is in
+static void (*CurrentState)(void);
+
+// States the MSP430 can be in
+static void streamState(void);
+static void configState(void);
+static void registerState(void);
 
 
 /**
@@ -123,14 +133,17 @@ static int sendLine(long sd, const char *buf, long len, long flags) {
 
 	do {
 
-		if(dataLeft < CC3000_TX_BUFFER_SIZE - 3) {
+		if(dataLeft < CC3000_TX_BUFFER_SIZE - HCI_CMND_SEND_ARG_LENGTH - HEADERS_SIZE_DATA - 3) {
 			dataLength = dataLeft;
 			chunkSize = dataLeft + 2;
 			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
 			buffer[dataLength] = '\r';
 			buffer[dataLength + 1] = '\n';
+
+			// Final packet chunk
+			dataSent = true;
 		} else {
-			dataLength = CC3000_TX_BUFFER_SIZE - 1;
+			dataLength = CC3000_TX_BUFFER_SIZE - HCI_CMND_SEND_ARG_LENGTH - HEADERS_SIZE_DATA - 1;
 			chunkSize = dataLength;
 			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
 		}
@@ -138,18 +151,13 @@ static int sendLine(long sd, const char *buf, long len, long flags) {
 		snd = send(sd, &buffer[0], chunkSize, flags);
 
 		if(snd <= 0) {
-			// Error occured
+			// Error occurred
 			dataSent = true;
 			totalLength = snd;
 		} else if(snd == chunkSize) {
 			dataLeft -= dataLength;
 			totalLength += dataLength;
 			bufferIndex += dataLength;
-
-			if(dataLeft == 0) {
-				dataSent = true;
-			}
-
 		} else {
 			// CC3000 didn't send the whole data?
 			while(1);
@@ -297,8 +305,6 @@ static void systickInit(void) {
         TIMER_A_DO_CLEAR);
 }
 
-static void (*CurrentState)(void);
-
 static void streamState(void) {
 
 	int32_t status = 0;
@@ -331,7 +337,19 @@ static void streamState(void) {
 				SERVER_writeData(rxBuffer, tokens);
 				break;
 			case 'd':
-				// Drop to config state - Not implemented
+				// Drop to configuration state
+				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
+					CurrentState = configState;
+					TIMER_A_stop(SYSTICK_BASE);
+					StartSample = false;
+
+					// Tell backend we are dropping to configuration
+					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK), 0);
+				}
+				break;
+			case 'r':
+				// Resume Streaming
+				// TODO: Not implemented yet
 				break;
 			}
 		}

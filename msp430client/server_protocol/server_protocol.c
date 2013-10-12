@@ -439,8 +439,14 @@ void SERVER_initInterfaces(void) {
 }
 
 
-void SERVER_handlePacket(char *data, int32_t length) {
+bool SERVER_dropToConfig(char *buffer, jsmntok_t *tokens) {
 
+	jsmntok_t key = tokens[2];
 
-
+	// Checking for 'dropconfig'
+	if(checkString(buffer, &key, DROPCONFIG, 10) == false) {
+		return false;
+	} else {
+		return true;
+	}
 }

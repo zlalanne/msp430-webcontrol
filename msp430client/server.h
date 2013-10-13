@@ -46,6 +46,7 @@ static const unsigned char PASSWORD[] = "";
 
 #define CONFIG_OK		"c_ok"
 #define RESUME_STREAM	"resume"
+#define PAUSE_STREAM	"pause"
 
 // Responses from server
 #define ACK			"ack"

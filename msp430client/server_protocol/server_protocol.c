@@ -106,7 +106,7 @@ uint8_t SERVER_getACKs(char *buffer, jsmntok_t *tokens) {
 }
 
 
-char SERVER_parseStreamData(char *buffer, jsmntok_t *tokens) {
+char SERVER_parseCommand(char *buffer, jsmntok_t *tokens) {
 
 	jsmntok_t key = tokens[1];
 
@@ -438,6 +438,17 @@ void SERVER_initInterfaces(void) {
 	}
 }
 
+bool SERVER_pauseStreaming(char *buffer, jsmntok_t *tokens) {
+
+	jsmntok_t key = tokens[2];
+
+	// Checking for 'pause'
+	if(checkString(buffer, &key, PAUSE_STREAM, 5) == false) {
+		return false;
+	} else {
+		return true;
+	}
+}
 
 bool SERVER_dropToConfig(char *buffer, jsmntok_t *tokens) {
 

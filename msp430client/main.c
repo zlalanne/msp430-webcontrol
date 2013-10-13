@@ -40,9 +40,9 @@ static void (*CurrentState)(void);
 
 // States the MSP430 can be in
 static void streamState(void);
+static void pausedState(void);
 static void configState(void);
 static void registerState(void);
-
 
 /**
  * recvLine
@@ -305,6 +305,7 @@ static void systickInit(void) {
         TIMER_A_DO_CLEAR);
 }
 
+
 static void streamState(void) {
 
 	int32_t status = 0;
@@ -326,7 +327,7 @@ static void streamState(void) {
 		if(jsonStatus == JSMN_SUCCESS) {
 
 			// Determine command
-			switch(SERVER_parseStreamData(rxBuffer, tokens)) {
+			switch(SERVER_parseCommand(rxBuffer, tokens)) {
 			case 'a':
 				// Data ACK
 				acks = SERVER_getACKs(rxBuffer, tokens);
@@ -336,6 +337,14 @@ static void streamState(void) {
 				// Write Data
 				SERVER_writeData(rxBuffer, tokens);
 				break;
+			case 'p':
+				// Pause Streaming
+				if(SERVER_pauseStreaming(rxBuffer, tokens) == true) {
+					CurrentState = pausedState;
+					TIMER_A_stop(SYSTICK_BASE);
+					StartSample = false;
+				}
+				break;
 			case 'd':
 				// Drop to configuration state
 				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
@@ -343,13 +352,56 @@ static void streamState(void) {
 					TIMER_A_stop(SYSTICK_BASE);
 					StartSample = false;
 
-					// Tell backend we are dropping to configuration
+					// Tell backend server we are dropping to configuration
 					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK) - 1, 0);
 				}
 				break;
+			}
+		}
+	}
+}
+
+static void pausedState(void) {
+
+	int32_t status = 0;
+	char rxBuffer[256];
+	jsmntok_t tokens[128];
+	jsmn_parser jsonParser;
+	jsmnerr_t jsonStatus;
+
+	// Waiting to resume or re-configure
+	status = recvLine(Socket, rxBuffer, 256, 0);
+	if(status > 0) {
+
+		// Parse JSON
+		jsmn_init(&jsonParser);
+		rxBuffer[status] = '\0';
+		jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+		if(jsonStatus == JSMN_SUCCESS) {
+
+			// Determine command
+			switch(SERVER_parseCommand(rxBuffer, tokens)) {
 			case 'r':
-				// Resume Streaming
-				// TODO: Not implemented yet
+				// Resume Stream
+				if(SERVER_resumeStream(rxBuffer, tokens) == true) {
+					DataMsgCount = 0;
+					CurrentState = streamState;
+
+					// Start Timer
+					TIMER_A_clear(SYSTICK_BASE);
+					TIMER_A_startCounter(SYSTICK_BASE,
+						TIMER_A_UP_MODE);
+				}
+				break;
+			case 'd':
+				// Drop to configuration state
+				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
+					CurrentState = configState;
+
+					// Tell backend we are dropping to configuration
+					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK) - 1, 0);
+				}
 				break;
 			}
 		}
@@ -367,8 +419,7 @@ static void configState(void) {
 
 	typedef enum {
 		RECV_CONFIG,
-		SEND_CONFIG_OK,
-		RECV_RESUME
+		SEND_CONFIG_OK
 	} step_t;
 
 	static step_t step = RECV_CONFIG;
@@ -413,40 +464,10 @@ static void configState(void) {
 		} while (status != 4);
 
 		SERVER_initInterfaces();
+		CurrentState = pausedState;
 
-		step = RECV_RESUME;
-		break;
-
-	// Waiting for resume streaming
-	case RECV_RESUME:
-
-		status = recvLine(Socket, rxBuffer, 256, 0);
-
-		if(status > 0) {
-
-			// Parse JSON
-			rxBuffer[status] = '\0';
-			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
-
-			if (jsonStatus == JSMN_SUCCESS) {
-				parseStatus = SERVER_resumeStream(rxBuffer, tokens);
-			} else {
-				parseStatus = false;
-			}
-
-			if(parseStatus == true) {
-				DataMsgCount = 0;
-				CurrentState = streamState;
-
-				// Start Timer
-				TIMER_A_clear(SYSTICK_BASE);
-				TIMER_A_startCounter(SYSTICK_BASE,
-					TIMER_A_UP_MODE);
-
-				// Start at RECV_CONFIG if we get reconfigured
-				step = RECV_CONFIG;
-			}
-		}
+		// Start at RECV_CONFIG if we get reconfigured
+		step = RECV_CONFIG;
 		break;
 	}
 }

@@ -344,7 +344,7 @@ static void streamState(void) {
 					StartSample = false;
 
 					// Tell backend we are dropping to configuration
-					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK), 0);
+					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK) - 1, 0);
 				}
 				break;
 			case 'r':

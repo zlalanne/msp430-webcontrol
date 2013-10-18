@@ -290,19 +290,37 @@ static void initHardware(void) {
 }
 
 /**
- * System Tick Initialization. Fires a timer interrupt at 10Hz (every 100ms) to start sampling
+ * System Tick Initialization. Uses RTC_A to keep track of time.
+ * Fires an RTC interrupt at 16Hz to start sampling
  */
 static void systickInit(void) {
 
-    // Configure Timer
-    // Set to 10Hz counter (ACLK/8 = 32768/8 = 4096)  (4096/10 ~= 410)
-    TIMER_A_configureUpMode(SYSTICK_BASE,
-    	TIMER_A_CLOCKSOURCE_ACLK,
-    	TIMER_A_CLOCKSOURCE_DIVIDER_8,
-    	409,
-    	TIMER_A_TAIE_INTERRUPT_ENABLE,
-    	TIMER_A_CAPTURECOMPARE_INTERRUPT_DISABLE,
-        TIMER_A_DO_CLEAR);
+	// Initialize the RTC_A interrupt. RTC_A is configured in counter
+	// mode and triggers at 16Hz. This is calculated by:
+	// ACLK / PS0 / PS1 = RTC Clock
+	// 32768Hz / 4 / 2 = 4096Hz
+	// Interrupt event happens at 2^8 = 256.
+	// 4096Hz / 256 = 16Hz
+
+	// 8 Bit Overflow Interrupt, coming from PS1
+	RTC_A_counterInit(RTC_A_BASE,
+		RTC_A_CLOCKSELECT_RT1PS,
+		RTC_A_COUNTERSIZE_8BIT);
+
+	// PS0 = ACLK / 4
+	RTC_A_counterPrescaleInit(RTC_A_BASE,
+		RTC_A_PRESCALE_0,
+		RTC_A_PSCLOCKSELECT_ACLK,
+		RTC_A_PSDIVIDER_4);
+
+	// PS1 = PS0 / 2
+	RTC_A_counterPrescaleInit(RTC_A_BASE,
+		RTC_A_PRESCALE_1,
+		RTC_A_PSCLOCKSELECT_RT0PS,
+		RTC_A_PSDIVIDER_2);
+
+	RTC_A_clearInterrupt(RTC_A_BASE, RTC_A_TIME_EVENT_INTERRUPT);
+	RTC_A_enableInterrupt(RTC_A_BASE, RTC_A_TIME_EVENT_INTERRUPT);
 }
 
 
@@ -341,7 +359,7 @@ static void streamState(void) {
 				// Pause Streaming
 				if(SERVER_pauseStreaming(rxBuffer, tokens) == true) {
 					CurrentState = pausedState;
-					TIMER_A_stop(SYSTICK_BASE);
+					RTC_A_holdClock(RTC_A_BASE);
 					StartSample = false;
 				}
 				break;
@@ -349,7 +367,7 @@ static void streamState(void) {
 				// Drop to configuration state
 				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
 					CurrentState = configState;
-					TIMER_A_stop(SYSTICK_BASE);
+					RTC_A_holdClock(RTC_A_BASE);
 					StartSample = false;
 
 					// Tell backend server we are dropping to configuration
@@ -389,9 +407,7 @@ static void pausedState(void) {
 					CurrentState = streamState;
 
 					// Start Timer
-					TIMER_A_clear(SYSTICK_BASE);
-					TIMER_A_startCounter(SYSTICK_BASE,
-						TIMER_A_UP_MODE);
+					RTC_A_startClock(RTC_A_BASE);
 				}
 				break;
 			case 'd':
@@ -627,8 +643,11 @@ int main(void) {
 
 		if((CurrentState == &streamState) && (StartSample == true) && (DataMsgCount < 10)) {
 
-			// Start the sample
+			// Clear the sample flag
+			__disable_interrupt();
 			StartSample = false;
+			__enable_interrupt();
+
 			dataLength = SERVER_sendData(data);
 
 			// Send the data
@@ -643,26 +662,23 @@ int main(void) {
 	}
 }
 
-#pragma vector = SYSTICK_VECTOR
-__interrupt void SYSTICK(void) {
-	switch (__even_in_range(TA0IV, 0x0E)) {
-	case 0x02:
-		break; // Vector 0x0: CCR1
-	case 0x04:
-		break; // Vector 0x02: CCR2
-	case 0x06:
-		break; // Vector 0x04: CCR3
-	case 0x08:
-		break; // Vector 0x06: CCR4
-	case 0x0A:
-		break; // Vector 0x08: CCR5
-	case 0x0C:
-		break; // Vector 0x0A: CCR6
-	case 0x0E: // Vector 0x0E: TAxCTL TAIFG
+#pragma vector=RTC_VECTOR
+__interrupt void RTC_A_ISR(void) {
+	switch (__even_in_range(RTCIV, 16)) {
+	case 0:
+		break;  //No interrupts
+	case 2:
+		break;  //RTCRDYIFG
+	case 4:         //RTCEVIFG
 		StartSample = true; // Start a new sample
 		__bic_SR_register_on_exit(LPM4_bits);
-		// Exit LPM on exit
 		break;
+	case 6:
+		break;  //RTCAIFG
+	case 8:
+		break;  //RT0PSIFG
+	case 10:
+		break; //RT1PSIFG
 	default:
 		break;
 	}

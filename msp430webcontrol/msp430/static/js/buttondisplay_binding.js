@@ -1,7 +1,6 @@
 // Display object has to be named lower case of python model class name
 // constructor always takes the id
 function buttondisplay(id, key, wsclient) {
-    console.log(wsclient);
     this.wsclient = wsclient;
     this.domobj = $('#' + id + ' > p > span');
     this.key = key;

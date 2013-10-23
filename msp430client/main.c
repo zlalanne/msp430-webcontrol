@@ -17,9 +17,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define NETAPP_IPCONFIG_MAC_OFFSET				(20)
-#define HEADERS_SIZE_DATA       (SPI_HEADER_SIZE + 5)
-#define HCI_CMND_SEND_ARG_LENGTH	(16)
+#define NETAPP_IPCONFIG_MAC_OFFSET								 (20)
+#define HEADERS_SIZE_DATA       				(SPI_HEADER_SIZE + 5)
+#define HCI_CMND_SEND_ARG_LENGTH								 (16)
 
 volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
 		OkToDoShutDown, ulCC3000DHCP_configured;
@@ -28,14 +28,14 @@ volatile unsigned char ucStopSmartConfig;
 // Flag used for indicating when to sample
 static bool StartSample = false;
 
-// Keeps track of how many data messages have not been acked. Will stop streaming
-// data if this number reaches 10
+// Keeps track of how many data messages have not been acked.
+// Will stop streaming data if this number reaches 10
 static uint8_t DataMsgCount = 0;
 
 // Socket for communicating with backend server
 static volatile long Socket;
 
-// Function pointer that points to the current state the MSP430 is in
+// Function pointer that points to the current state of the MSP430
 static void (*CurrentState)(void);
 
 // States the MSP430 can be in
@@ -49,6 +49,14 @@ static void registerState(void);
  *
  * Modified version of the BSD socket recv function that buffers the
  * data and returns a string only once a line ending boundary is found
+ *
+ * @param sd - Socket Descriptor
+ * @param buf - Buffer to store the received data
+ * @param len - Length of buffer
+ * @param flags - Flags for receiving data
+ *
+ * @return The number of bytes stored in the buffer or 0 indicating that
+ * the an error occured or nothing yet to recieve
  */
 int recvLine(long sd, char *buf, long len, long flags) {
 
@@ -118,6 +126,19 @@ int recvLine(long sd, char *buf, long len, long flags) {
 	return totalLength;
 }
 
+/**
+ * sendLine
+ *
+ * Modified version of the BSD socket send function that adds a packet
+ * boundary to the end of the data "\r\n"
+ *
+ * @param sd - Socket Descriptor
+ * @param buf - Buffer of data to send
+ * @param len - Length of data to send
+ * @param flags - Flags for sending data
+ *
+ * @return Number of bytes sent
+ */
 static int sendLine(long sd, const char *buf, long len, long flags) {
 
 	char buffer[CC3000_TX_BUFFER_SIZE];
@@ -290,15 +311,17 @@ static void initHardware(void) {
 }
 
 /**
+ * systickInit
+ *
  * System Tick Initialization. Uses RTC_A to keep track of time.
- * Fires an RTC interrupt at 16Hz to start sampling
+ * Fires an RTC interrupt at 16Hz to start sampling.
  */
 static void systickInit(void) {
 
 	// Initialize the RTC_A interrupt. RTC_A is configured in counter
 	// mode and triggers at 16Hz. This is calculated by:
-	// ACLK / PS0 / PS1 = RTC Clock
-	// 32768Hz / 4 / 2 = 4096Hz
+	// (ACLK / PS0) / PS1 = RTC Clock
+	// (32768Hz / 4) / 2 = 4096Hz
 	// Interrupt event happens at 2^8 = 256.
 	// 4096Hz / 256 = 16Hz
 
@@ -323,7 +346,16 @@ static void systickInit(void) {
 	RTC_A_enableInterrupt(RTC_A_BASE, RTC_A_TIME_EVENT_INTERRUPT);
 }
 
-
+/**
+ * streamState
+ *
+ * In this state the MSP430 is actively sending data back to the server.
+ * During each iteration of this state the MSP430 tries to read from the
+ * CC3000 to determine if any new commands have come in.
+ *
+ * The MSP430 can leave this state if it needs to be reconfigured or all
+ * web clients have stopped monitoring it so it can pause streaming.
+ */
 static void streamState(void) {
 
 	int32_t status = 0;
@@ -379,6 +411,17 @@ static void streamState(void) {
 	}
 }
 
+/**
+ * pausedState
+ *
+ * In this state the MSP430 does not stream data to the server but it
+ * has been configured and is ready for streaming. During each iteration
+ * the MSP430 tries to read from the CC3000 to determine if there are any
+ * new commands.
+ *
+ * The MSP430 can leave this state if a web client connects and the MSP430
+ * needs to start streaming or if the MSP430 needs to be reconfigured.
+ */
 static void pausedState(void) {
 
 	int32_t status = 0;
@@ -612,7 +655,7 @@ int main(void) {
 	// Timeout for receive in ms
 	int32_t timeout = 100;
 
-	WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
+	WDT_A_hold(WDT_A_BASE); // Stop watchdog timer
 
 	initHardware();
 	systickInit();
@@ -626,6 +669,7 @@ int main(void) {
 
 	while ((ulCC3000Connected == 0) || (ulCC3000DHCP == 0));
 
+	// Setting up heartbeat
 	P1OUT |= BIT0;
 
 	do {
@@ -669,7 +713,7 @@ __interrupt void RTC_A_ISR(void) {
 		break;  //No interrupts
 	case 2:
 		break;  //RTCRDYIFG
-	case 4:         //RTCEVIFG
+	case 4:     //RTCEVIFG
 		StartSample = true; // Start a new sample
 		__bic_SR_register_on_exit(LPM4_bits);
 		break;
@@ -678,9 +722,8 @@ __interrupt void RTC_A_ISR(void) {
 	case 8:
 		break;  //RT0PSIFG
 	case 10:
-		break; //RT1PSIFG
+		break;  //RT1PSIFG
 	default:
 		break;
 	}
 }
-

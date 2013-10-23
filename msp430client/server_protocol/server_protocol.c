@@ -23,8 +23,8 @@ static uint8_t decodeOpcode(char *opcode, uint8_t opcodeLength) {
 	uint8_t value = 0;
 	uint8_t i;
 	for(i = 0; i < opcodeLength; i++) {
-		// Essentialy multiple the current value by 10 and add the new character
-		value = (value << 3) + (value << 1) + (opcode[i] - '0');
+		// Essentially multiple the current value by 10 and add the new character
+		value = (value * 10) + (opcode[i] - '0');
 	}
 	return value;
 }

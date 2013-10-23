@@ -634,6 +634,8 @@ class MSP430StreamState(ServerState):
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
+        # Starting to stream again, reset the ack count
+        self.datamsgcount_ack = 0
         msg = {'cmd':common_protocol.ServerCommands.RESUME_STREAMING}
         self.client.protocol.sendLine(json.dumps(msg))
 

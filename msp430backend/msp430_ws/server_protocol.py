@@ -410,13 +410,15 @@ class MSP430RegisterState(ServerState):
                     name = cls.__name__
                     desc = msp430_data.utility.trim(cls.__doc__)
                     choices = []
-                    for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
+
+                    for choice_pin, choice_desc in cls.IO_CHOICES:
                         choice = {}
-                        choice['s'] = choice_key
-                        choice['d'] = choice_value
+                        choice['s'] = choice_pin
+                        choice['d'] = choice_desc
                         choices.append(choice)
 
                     ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+
                 return ret
 
             self.client.iface = {}
@@ -500,15 +502,18 @@ class MSP430ConfigState(ServerState):
 
         # Format IO to give to the msp430
         def format_io_msp430(io_collection):
+
             # Duplicate equations allowed, duplicate instances not allowed
             instanced_io_dict = {}
             for io in io_collection:
 
                 cls = getattr(msp430_data.interface, io['cls_name'])
+                log.msg("CLS:{}".format(cls))
+                log.msg("CH_PORT:{}".format(io['ch_port']))
 
-                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if choice_key == io['ch_port']:
-                        key = cls.__name__ + ":" + choice_value
+                for choice_pin, choice_desc in cls.IO_CHOICES:
+                    if choice_pin == io['ch_port']:
+                        key = cls.__name__ + ":" + str(choice_pin)
                         break
                 else:
                     log.msg("Error parsing class")
@@ -600,16 +605,8 @@ class MSP430StreamState(ServerState):
                 cls_name, pin = key.split(":")
                 cls = getattr(msp430_data.interface, cls_name)
 
-                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if pin == choice_value:
-                        break
-                else:
-                    choice_key = "ERROR"
-                    log.msg("MSP430StreamState.dataReceived - Error parsing incoming data for pin")
-                    continue
-
-                new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
-                new_value = cls.parse_value(value)
+                new_key = "cls:%s, port:%d, eq:" % (cls_name, int(pin))
+                new_value = cls.parse_input(value)
 
                 # Need to evaluate the equations
                 if msp430_data.interface.IWrite in cls.__bases__:

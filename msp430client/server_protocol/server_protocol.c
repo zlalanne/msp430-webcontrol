@@ -318,7 +318,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 				// Copy the pin
 				key = tokens[i++];
 				pinLength = key.end - key.start;
-				if(key.type == JSMN_STRING) {
+				if(key.type == JSMN_PRIMITIVE) {
 					memcpy(pin, &buffer[key.start], pinLength);
 				}
 
@@ -334,7 +334,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 			// Copy the pin
 			key = tokens[i++];
 			pinLength = key.end - key.start;
-			if(key.type == JSMN_STRING) {
+			if(key.type == JSMN_PRIMITIVE) {
 				memcpy(pin, &buffer[key.start], pinLength);
 			}
 
@@ -373,7 +373,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 
 		CurrentConfigs++;
 
-	} while((key.end + 3) != end);
+	} while((key.end + 2) != end);
 
 	return true;
 }

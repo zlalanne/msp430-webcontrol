@@ -110,7 +110,7 @@
 						</tool>
 					</fileInfo>
 					<sourceEntries>
-						<entry excluding="main_unit_test.c|energia/new.cpp|energia/main.cpp|cc3000/Basic Wifi Application/basic_wifi_application.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="main_unit_test.c|energia/main.cpp|cc3000/Basic Wifi Application/basic_wifi_application.c|energia/new.cpp" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

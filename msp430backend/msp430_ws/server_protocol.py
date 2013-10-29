@@ -548,10 +548,6 @@ class MSP430StreamState(ServerState):
         self.write_data_buffer_eq = {}
         self.read_data_buffer_eq = {}
 
-        # Buffers for storing the raw data
-        self.read_data_buffer = {}
-        self.write_data_buffer = {}
-
         self.datamsgcount_ack = 0
 
     def evaluate_eq(self, eq, value):
@@ -598,19 +594,22 @@ class MSP430StreamState(ServerState):
 
                 cls = getattr(msp430_data.interface, cls_name)
 
-                new_key = "cls:{}, port:{}, eq:".format(cls_name, int(pin))
+                # Convert from raw data string to correct data type
                 new_value = cls.parse_input(value)
 
-                # Need to evaluate the equations
+                # Evaluate equation
                 if msp430_data.interface.IWrite in cls.__bases__:
-                    self.write_data_buffer[new_key] = new_value
-                    self.write_data_buffer_eq[new_key] = {"calculated" : new_value, "real": new_value}
+
+                    for eq in interface["equations"]:
+                        new_key = "cls:{}, port:{}, eq:{}".format(cls_name, int(pin), eq)
+                        self.write_data_buffer_eq[new_key] = {"calculated" : self.evaluate_eq(eq, new_value),
+                                                              "real": new_value}
 
                 elif msp430_data.interface.IRead in cls.__bases__:
-                    self.read_data_buffer[new_key] = new_value
-                    self.read_data_buffer_eq[new_key] = new_value
 
-            # Ignoring the equations for now
+                    for eq in interface["equations"]:
+                        new_key = "cls:{}, port:{}, eq:{}".format(cls_name, int(pin), eq)
+                        self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, new_value)
 
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:

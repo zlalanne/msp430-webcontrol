@@ -112,7 +112,6 @@ WSClient.prototype.ws_onopen = function() {
     if (this.debug) {
         console.log('WS connected');
     }
-    // request connected RPI list
 };
 
 WSClient.prototype.ws_onclose = function() {

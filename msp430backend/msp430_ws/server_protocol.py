@@ -1,6 +1,7 @@
 import requests
 import json
 import sys
+import re
 
 from twisted.internet.error import ConnectionDone
 from twisted.internet import protocol, threads, reactor
@@ -410,13 +411,15 @@ class MSP430RegisterState(ServerState):
                     name = cls.__name__
                     desc = msp430_data.utility.trim(cls.__doc__)
                     choices = []
-                    for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
+
+                    for choice_pin, choice_desc in cls.IO_CHOICES:
                         choice = {}
-                        choice['s'] = choice_key
-                        choice['d'] = choice_value
+                        choice['s'] = choice_pin
+                        choice['d'] = choice_desc
                         choices.append(choice)
 
                     ret.append({'name':name, 'desc':desc, 'choices':choices, 'io_type':cls.IO_TYPE})
+
                 return ret
 
             self.client.iface = {}
@@ -454,7 +457,8 @@ class MSP430ConfigState(ServerState):
             self.client.push_state(MSP430StreamState(self.client,
                 reads=self.config_reads,
                 writes=self.config_writes,
-                interfaces=self.config_interfaces
+                interfaces=self.config_interfaces,
+                mapping=self.config_mapping
             ))
         elif data == common_protocol.MSP430ClientCommands.CONFIG_FAIL:
             if self.client.protocol.debug:
@@ -500,32 +504,24 @@ class MSP430ConfigState(ServerState):
 
         # Format IO to give to the msp430
         def format_io_msp430(io_collection):
-            # Duplicate equations allowed, duplicate instances not allowed
-            instanced_io_dict = {}
-            for io in io_collection:
+
+            config_mapping = {}
+            msp430_configs = {}
+            i = 0
+            for key, io in io_collection:
 
                 cls = getattr(msp430_data.interface, io['cls_name'])
+                msp430_configs[str(i)] = {'pin': io['ch_port'], 'opcode': cls.IO_OPCODE}
+                config_mapping[str(i)] = io
 
-                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if choice_key == io['ch_port']:
-                        key = cls.__name__ + ":" + choice_value
-                        break
-                else:
-                    log.msg("Error parsing class")
-                    continue
+                i += 1
 
-                if key not in instanced_io_dict:
-                    io_new_dict = {'pin': choice_pin, 'opcode': cls.IO_OPCODE}
-                    instanced_io_dict[key] = io_new_dict
+            return msp430_configs, config_mapping
 
-            return instanced_io_dict
-
-
-        self.config_interfaces = format_io_msp430(reads + writes)
         self.config_reads = format_io(reads)
         self.config_writes = format_io(writes)
 
-        log.msg(self.config_interfaces)
+        self.config_interfaces, self.config_mapping = format_io_msp430(self.config_reads.items() + self.config_writes.items())
 
         if self.client.protocol.debug:
             log.msg('MSP430ConfigState - Pushing configs to remote MSP430')
@@ -538,7 +534,7 @@ class MSP430ConfigState(ServerState):
 
 class MSP430StreamState(ServerState):
     """ In this state the MSP430 has been configured and is streaming data"""
-    def __init__(self, client, reads, writes, interfaces):
+    def __init__(self, client, reads, writes, interfaces, mapping):
         super(MSP430StreamState, self).__init__(client)
 
         # Read/Write configs is used to communicate with the web
@@ -546,17 +542,11 @@ class MSP430StreamState(ServerState):
         self.config_reads = reads
         self.config_writes = writes
         self.config_interfaces = interfaces
+        self.config_mapping = mapping
 
         # Buffers for storing the evaluated data
         self.write_data_buffer_eq = {}
         self.read_data_buffer_eq = {}
-
-        # Buffers for storing the raw data
-        self.read_data_buffer = {}
-        self.write_data_buffer = {}
-
-        # Maps an equation to an interface
-        self.write_data_eq_map = {}
 
         self.datamsgcount_ack = 0
 
@@ -586,7 +576,8 @@ class MSP430StreamState(ServerState):
             return
 
         if data['cmd'] == common_protocol.MSP430ClientCommands.DROP_TO_CONFIG_OK:
-            # order here is important, pop first!
+
+            # Order here is important, pop first!
             self.client.pop_state()
             self.client.current_state().config_io(self.delegate_config_reads, self.delegate_config_writes)
 
@@ -597,32 +588,28 @@ class MSP430StreamState(ServerState):
 
             for key, value in interfaces.iteritems():
 
-                cls_name, pin = key.split(":")
+                interface = self.config_mapping[key]
+                cls_name = interface["cls_name"]
+                pin = interface["ch_port"]
+
                 cls = getattr(msp430_data.interface, cls_name)
 
-                for choice_key, choice_value, choice_pin in cls.IO_CHOICES:
-                    if pin == choice_value:
-                        break
-                else:
-                    choice_key = "ERROR"
-                    log.msg("MSP430StreamState.dataReceived - Error parsing incoming data for pin")
-                    continue
+                # Convert from raw data string to correct data type
+                new_value = cls.parse_input(value)
 
-                new_key = "cls:%s, port:%d, eq:" % (cls_name, choice_key)
-                new_value = cls.parse_value(value)
-
-                # Need to evaluate the equations
+                # Evaluate equation
                 if msp430_data.interface.IWrite in cls.__bases__:
-                    self.write_data_buffer[new_key] = new_value
-                    self.write_data_buffer_eq[new_key] = {"calculated" : new_value, "real": new_value}
-                    self.write_data_eq_map[new_key] = key
+
+                    for eq in interface["equations"]:
+                        new_key = "cls:{}, port:{}, eq:{}".format(cls_name, int(pin), eq)
+                        self.write_data_buffer_eq[new_key] = {"calculated" : self.evaluate_eq(eq, new_value),
+                                                              "real": new_value}
 
                 elif msp430_data.interface.IRead in cls.__bases__:
-                    self.read_data_buffer[new_key] = new_value
-                    self.read_data_buffer_eq[new_key] = new_value
 
-
-            # Ignoring the equations for now
+                    for eq in interface["equations"]:
+                        new_key = "cls:{}, port:{}, eq:{}".format(cls_name, int(pin), eq)
+                        self.read_data_buffer_eq[new_key] = self.evaluate_eq(eq, new_value)
 
             # Notify factory to update listening clients
             if self.datamsgcount_ack >= 5:
@@ -634,6 +621,8 @@ class MSP430StreamState(ServerState):
             self.client.protocol.factory.ws_factory.msp430_new_data_event(self.client)
 
     def resume_streaming(self):
+        # Starting to stream again, reset the ack count
+        self.datamsgcount_ack = 0
         msg = {'cmd':common_protocol.ServerCommands.RESUME_STREAMING}
         self.client.protocol.sendLine(json.dumps(msg))
 
@@ -642,11 +631,19 @@ class MSP430StreamState(ServerState):
         self.client.protocol.sendLine(json.dumps(msg))
 
     def write_interface_data(self, key, value):
-        # Removes the EQ from the key sent by the client
-        config_key = self.write_data_eq_map[key]
-        opcode = self.config_interfaces[config_key]["opcode"]
-        pin = self.config_interfaces[config_key]["pin"]
-        payload = {'opcode': opcode, 'pin' : pin, 'value' : str(value)}
+
+        # Get the class and port from the key
+        match = re.match(r'cls:([A-Za-z0-9_]+),\ port:(\d+)', key)
+
+        try:
+            cls_name = match.group(1)
+            pin = match.group(2)
+        except:
+            # TODO: add correct exception
+            return
+
+        cls = getattr(msp430_data.interface, cls_name)
+        payload = {'opcode': cls.IO_OPCODE, 'pin' : pin, 'value' : str(value)}
         msg = {'cmd':common_protocol.ServerCommands.WRITE_DATA,
                'payload': payload}
         self.client.protocol.sendLine(json.dumps(msg))

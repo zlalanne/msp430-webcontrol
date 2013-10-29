@@ -30,7 +30,7 @@ class ServerCommands(object):
     DROP_TO_CONFIG = 'dropconfig'
     ACK_DATA = 'ackdata'
     RESUME_STREAMING = 'resume'
-    PAUSE_STREAMING = 'pauses'
+    PAUSE_STREAMING = 'pause'
     WRITE_DATA = 'writedata'
     REGISTER = 'reg'
 

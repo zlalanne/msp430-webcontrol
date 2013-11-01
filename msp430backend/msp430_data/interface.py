@@ -51,13 +51,13 @@ class GPIOInput(IRead):
     IO_CHOICES = (
         (44, "GREEN_LED"),
         (43, "RED_LED"),
-        (5, "P1_6_INPUT" ),
-        (8, "P2_7_INPUT" ),
-        (11, "P8_1_INPUT" ),
-        (34, "P4_3_INPUT" ),
-        (33, "P4_0_INPUT" ),
-        (32, "P3_7_INPUT" ),
-        (31, "P8_2_INPUT" ),
+        (5, "P1_6" ),
+        (8, "P2_7" ),
+        (11, "P8_1" ),
+        (34, "P4_3" ),
+        (33, "P4_0" ),
+        (32, "P3_7" ),
+        (31, "P8_2" ),
     )
 
 class AnalogInput(IRead):
@@ -68,14 +68,37 @@ class AnalogInput(IRead):
     IO_OPCODE = 2
 
     IO_CHOICES = (
-        (0, 'A0_INPUT'),
-        (1, 'A1_INPUT' ),
-        (2, 'A2_INPUT' ),
-        (3, 'A3_INPUT' ),
-        (4, 'A4_INPUT' ),
-        (5, 'A5_INPUT' ),
-        (6, 'A6_INPUT' ),
-        (12, 'A12_INPUT'),
+        (0, 'A0'),
+        (1, 'A1' ),
+        (2, 'A2' ),
+        (3, 'A3' ),
+        (4, 'A4' ),
+        (5, 'A5' ),
+        (6, 'A6' ),
+        (12, 'A12'),
+    )
+
+    @staticmethod
+    def parse_input(value):
+        try:
+            return int(value.strip())
+        except:
+            return 0
+
+
+class AnalogOutput(IWrite):
+    """Maps to ADC output"""
+
+    IO_TYPE = IBase.IO_TYPE_INTEGER
+
+    IO_OPCODE = 3
+
+    IO_CHOICES = (
+        (19, 'P2_0'),
+        (40, 'P2_5' ),
+        (39, 'P2_4' ),
+        (38, 'P1_5' ),
+        (37, 'P1_4' ),
     )
 
     @staticmethod
@@ -101,13 +124,13 @@ class GPIOOutput(IWrite):
     IO_CHOICES = (
         (44, "GREEN_LED"),
         (43, "RED_LED"),
-        (5, "P1_6_OUTPUT" ),
-        (8, "P2_7_OUTPUT" ),
-        (11, "P8_1_OUTPUT" ),
-        (34, "P4_3_OUTPUT" ),
-        (33, "P4_0_OUTPUT" ),
-        (32, "P3_7_OUTPUT" ),
-        (31, "P8_2_OUTPUT" ),
+        (5, "P1_6" ),
+        (8, "P2_7" ),
+        (11, "P8_1" ),
+        (34, "P4_3" ),
+        (33, "P4_0" ),
+        (32, "P3_7" ),
+        (31, "P8_2" ),
     )
 
     @staticmethod

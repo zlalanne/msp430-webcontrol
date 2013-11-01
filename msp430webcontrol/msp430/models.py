@@ -85,6 +85,8 @@ class GraphDisplay(ReadDisplay):
 class ButtonDisplay(WriteDisplay):
     io_type = (IOTypes.boolean,)
 
+class SliderDisplay(WriteDisplay):
+    io_type = (IOTypes.integer,)
 
 
 """Connect signals to ws_comm handler for interface change updates"""

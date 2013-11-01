@@ -19,6 +19,10 @@
     <!-- Custom styles for this template -->
     <link href="{% static "bootstrap/css/navbar-fixed-top.css" %}" rel="stylesheet">
     <link rel="stylesheet" type="text/less" href="{% static "css/global.less" %}" media="screen" />
+
+    <!-- bootstrap-slider plugin -->
+    <link href="{% static "slider/slider.css" %}" rel="stylesheet">
+
     {% endblock %}
     {% endcompress %}
 
@@ -86,11 +90,15 @@
     <!--[if lte IE 8]><script language="javascript" type="text/javascript" src="{% static "flot/excanvas.min.js" %}"></script><![endif]-->
     <script type="text/javascript" src="{% static "flot/jquery.flot.resize.js" %}"></script>
 
+    <!-- bootstrap-slider plugin -->
+    <script type="text/javascript" src="{% static "slider/bootstrap-slider.js" %}"></script>
+
     <!-- display bindings -->
     <script type="text/javascript" src="{% static "js/numericdisplay_binding.js" %}"></script>
     <script type="text/javascript" src="{% static "js/progressbardisplay_binding.js" %}"></script>
     <script type="text/javascript" src="{% static "js/buttondisplay_binding.js" %}"></script>
     <script type="text/javascript" src="{% static "js/graphdisplay_binding.js" %}"></script>
+    <script type="text/javascript" src="{% static "js/sliderdisplay_binding.js" %}"></script>
 
     <script type="text/javascript" src="{% static "js/load.js" %}"></script>
 

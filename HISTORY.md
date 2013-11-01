@@ -3,6 +3,13 @@ MSP430 Web Control
 
 Old Releases
 -----------------
+* 0.50 Release
+    * Simplified storage of configurations on backend as a python dictionary
+    * Changed pin string decoding to backend. Decrease processing time on MSP430
+    * Added equation evaluation on backend. Runs equation on data recieved from MSP430
+    * Added progress bars and labels to web interface
+    * Simplified a lot of the code running on the MSP430. Trying to get best performance and reduce power
+
 * 0.40 Release
     * Converted the backend and client to use \n\r to define packet boundaries
     * Cleaned up the client firmware. Removed extra code and made state machine more re-entrant

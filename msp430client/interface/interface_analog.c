@@ -14,6 +14,7 @@
 #include "interface_analog.h"
 #include "stdlib.h"
 #include "Energia.h"
+#include "util/util.h"
 
 uint16_t interfaceAnalogRead(uint8_t pin, char* input){
 
@@ -39,7 +40,7 @@ uint16_t interfaceAnalogRead(uint8_t pin, char* input){
 
 void interfaceAnalogWrite(uint8_t pin, char* output, char output_length){
     uint16_t value;
-    value = atoi(output);
+    value = UTIL_atoi(output, output_length);
     analogWrite(pin, value);
 }
 

@@ -7,7 +7,7 @@
 #define	MAX_CONFIGS 	16
 #define MAX_PIN 		8
 #define MAX_OPCODE		2
-#define MAX_NAME		32
+#define MAX_NAME		4
 #define MAX_DATA		512
 
 // Connection Details

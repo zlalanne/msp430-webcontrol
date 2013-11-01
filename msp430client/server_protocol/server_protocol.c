@@ -1,5 +1,6 @@
 #include "server.h"
 #include "interface.h"
+#include "util/util.h"
 
 #include "jsmn.h"
 
@@ -23,8 +24,8 @@ static uint8_t decodeOpcode(char *opcode, uint8_t opcodeLength) {
 	uint8_t value = 0;
 	uint8_t i;
 	for(i = 0; i < opcodeLength; i++) {
-		// Essentialy multiple the current value by 10 and add the new character
-		value = (value << 3) + (value << 1) + (opcode[i] - '0');
+		// Essentially multiple the current value by 10 and add the new character
+		value = (value * 10) + (opcode[i] - '0');
 	}
 	return value;
 }
@@ -33,7 +34,6 @@ static uint8_t decodeOpcode(char *opcode, uint8_t opcodeLength) {
 static bool checkString(char *jsonBuffer, jsmntok_t *jsonToken, const char *expectedString, uint8_t expectedLength) {
 
 	uint16_t length;
-	char tokenBuffer[64];
 
 	if(jsonToken->type == JSMN_STRING) {
 
@@ -43,8 +43,7 @@ static bool checkString(char *jsonBuffer, jsmntok_t *jsonToken, const char *expe
 			return false;
 		}
 
-		memcpy(tokenBuffer, &jsonBuffer[jsonToken->start], length);
-		if(memcmp(expectedString, tokenBuffer, length) != 0) {
+		if(memcmp(expectedString, &jsonBuffer[jsonToken->start], length) != 0) {
 			return false;
 		} else {
 			return true;
@@ -106,7 +105,7 @@ uint8_t SERVER_getACKs(char *buffer, jsmntok_t *tokens) {
 }
 
 
-char SERVER_parseStreamData(char *buffer, jsmntok_t *tokens) {
+char SERVER_parseCommand(char *buffer, jsmntok_t *tokens) {
 
 	jsmntok_t key = tokens[1];
 
@@ -125,8 +124,10 @@ bool SERVER_writeData(char *buffer, jsmntok_t *tokens) {
 	jsmntok_t key = tokens[2];
 	jsmntok_t pinKey;
 	jsmntok_t valueKey;
+	jsmntok_t opcodeKey;
 	uint8_t opcode;
 	uint16_t pin;
+	uint8_t i;
 
 	// Checking for 'writedata'
 	if(checkString(buffer, &key, WRITEDATA, 9) == false) {
@@ -145,115 +146,31 @@ bool SERVER_writeData(char *buffer, jsmntok_t *tokens) {
 	}
 
 	key = tokens[5];
-	switch(buffer[key.start]) {
-	case 'o':
-		if(checkString(buffer, &key, OPCODE, 6) == false) {
-			return false;
-		}
-
-		key = tokens[6];
-		opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
-
-		key = tokens[7];
-		if(buffer[key.start] == 'p') {
-			if(checkString(buffer, &key, PIN, 3) == false) {
-				return false;
-			}
-			pinKey = tokens[8];
-
-			key = tokens[9];
-			if(checkString(buffer, &key, VALUE, 5) == false) {
-				return false;
-			}
-
-			valueKey = tokens[10];
-		} else {
-
-			if(checkString(buffer, &key, VALUE, 5) == false) {
-				return false;
-			}
-			valueKey = tokens[8];
-
-			key = tokens[9];
-			if(checkString(buffer, &key, PIN, 3) == false) {
-				return false;
-			}
-			pinKey = tokens[10];
-		}
-
-		break;
-	case 'v':
-		if(checkString(buffer, &key, VALUE, 5) == false) {
-			return false;
-		}
-
-		valueKey = tokens[6];
-		key = tokens[7];
-		if(buffer[key.start] == 'o') {
+	for(i = 0; i < 6; i = i + 2) {
+		switch(buffer[key.start]) {
+		case 'o':
 			if(checkString(buffer, &key, OPCODE, 6) == false) {
 				return false;
 			}
-			key = tokens[8];
-			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
-
-			key = tokens[9];
-			if(checkString(buffer, &key, PIN, 3) == false) {
-				return false;
-			}
-			pinKey = tokens[10];
-		} else {
-
-			if(checkString(buffer, &key, PIN, 3) == false) {
-				return false;
-			}
-			pinKey = tokens[8];
-
-			key = tokens[9];
-			if(checkString(buffer, &key, OPCODE, 6) == false) {
-				return false;
-			}
-			key = tokens[10];
-			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
-		}
-
-		break;
-	case 'p':
-		if(checkString(buffer, &key, PIN, 3) == false) {
-			return false;
-		}
-		pinKey = tokens[6];
-		key = tokens[7];
-
-		if(buffer[key.start] == 'o') {
-			if(checkString(buffer, &key, OPCODE, 6) == false) {
-				return false;
-			}
-			key = tokens[8];
-			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
-
-			key = tokens[9];
+			opcodeKey = tokens[6 + i];
+			break;
+		case 'v':
 			if(checkString(buffer, &key, VALUE, 5) == false) {
 				return false;
 			}
-
-			valueKey = tokens[10];
-		} else {
-
-			if(checkString(buffer, &key, VALUE, 5) == false) {
+			valueKey = tokens[6 + i];
+			break;
+		case 'p':
+			if(checkString(buffer, &key, PIN, 3) == false) {
 				return false;
 			}
-			valueKey = tokens[8];
-
-			key = tokens[9];
-			if(checkString(buffer, &key, OPCODE, 6) == false) {
-				return false;
-			}
-			key = tokens[10];
-			opcode = decodeOpcode(&buffer[key.start], key.end - key.start);
+			pinKey = tokens[6 + i];
+			break;
 		}
-		break;
+		key = tokens[7 + i];
 	}
 
+	opcode = UTIL_atoi(&buffer[opcodeKey.start], opcodeKey.end - opcodeKey.start);
 	pin = INTERFACE_list[opcode]->decode(&buffer[pinKey.start], pinKey.end - pinKey.start);
 	INTERFACE_list[opcode]->write(pin, &buffer[valueKey.start], valueKey.end - valueKey.start);
 
@@ -318,7 +235,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 				// Copy the pin
 				key = tokens[i++];
 				pinLength = key.end - key.start;
-				if(key.type == JSMN_STRING) {
+				if(key.type == JSMN_PRIMITIVE) {
 					memcpy(pin, &buffer[key.start], pinLength);
 				}
 
@@ -334,7 +251,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 			// Copy the pin
 			key = tokens[i++];
 			pinLength = key.end - key.start;
-			if(key.type == JSMN_STRING) {
+			if(key.type == JSMN_PRIMITIVE) {
 				memcpy(pin, &buffer[key.start], pinLength);
 			}
 
@@ -373,7 +290,7 @@ bool SERVER_setConfig(char *buffer, jsmntok_t *tokens) {
 
 		CurrentConfigs++;
 
-	} while((key.end + 3) != end);
+	} while((key.end + 2) != end);
 
 	return true;
 }
@@ -438,9 +355,26 @@ void SERVER_initInterfaces(void) {
 	}
 }
 
+bool SERVER_pauseStreaming(char *buffer, jsmntok_t *tokens) {
 
-void SERVER_handlePacket(char *data, int32_t length) {
+	jsmntok_t key = tokens[2];
 
+	// Checking for 'pause'
+	if(checkString(buffer, &key, PAUSE_STREAM, 5) == false) {
+		return false;
+	} else {
+		return true;
+	}
+}
 
+bool SERVER_dropToConfig(char *buffer, jsmntok_t *tokens) {
 
+	jsmntok_t key = tokens[2];
+
+	// Checking for 'dropconfig'
+	if(checkString(buffer, &key, DROPCONFIG, 10) == false) {
+		return false;
+	} else {
+		return true;
+	}
 }

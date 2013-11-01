@@ -42,7 +42,6 @@ MSP430 Firmware
 
 Current Release
 -----------------
-* 0.40 Release
-    * Converted the backend and client to use \n\r to define packet boundaries
-    * Cleaned up the client firmware. Removed extra code and made state machine more re-entrant
-    * Added data acking from the backend -> client when receiving data to display
+* 0.51 Release
+    * Added javascript slider for web interface
+    * Added analog write to msp430 firmware

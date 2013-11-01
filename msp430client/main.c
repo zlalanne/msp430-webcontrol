@@ -17,7 +17,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define NETAPP_IPCONFIG_MAC_OFFSET				(20)
+#define NETAPP_IPCONFIG_MAC_OFFSET								 (20)
+#define HEADERS_SIZE_DATA       				(SPI_HEADER_SIZE + 5)
+#define HCI_CMND_SEND_ARG_LENGTH								 (16)
 
 volatile unsigned long ulSmartConfigFinished, ulCC3000Connected, ulCC3000DHCP,
 		OkToDoShutDown, ulCC3000DHCP_configured;
@@ -26,19 +28,35 @@ volatile unsigned char ucStopSmartConfig;
 // Flag used for indicating when to sample
 static bool StartSample = false;
 
-// Keeps track of how many data messages have not been acked. Will stop streaming
-// data if this number reaches 10
+// Keeps track of how many data messages have not been acked.
+// Will stop streaming data if this number reaches 10
 static uint8_t DataMsgCount = 0;
 
 // Socket for communicating with backend server
 static volatile long Socket;
 
+// Function pointer that points to the current state of the MSP430
+static void (*CurrentState)(void);
+
+// States the MSP430 can be in
+static void streamState(void);
+static void pausedState(void);
+static void configState(void);
+static void registerState(void);
 
 /**
  * recvLine
  *
  * Modified version of the BSD socket recv function that buffers the
  * data and returns a string only once a line ending boundary is found
+ *
+ * @param sd - Socket Descriptor
+ * @param buf - Buffer to store the received data
+ * @param len - Length of buffer
+ * @param flags - Flags for receiving data
+ *
+ * @return The number of bytes stored in the buffer or 0 indicating that
+ * the an error occured or nothing yet to recieve
  */
 int recvLine(long sd, char *buf, long len, long flags) {
 
@@ -108,6 +126,19 @@ int recvLine(long sd, char *buf, long len, long flags) {
 	return totalLength;
 }
 
+/**
+ * sendLine
+ *
+ * Modified version of the BSD socket send function that adds a packet
+ * boundary to the end of the data "\r\n"
+ *
+ * @param sd - Socket Descriptor
+ * @param buf - Buffer of data to send
+ * @param len - Length of data to send
+ * @param flags - Flags for sending data
+ *
+ * @return Number of bytes sent
+ */
 static int sendLine(long sd, const char *buf, long len, long flags) {
 
 	char buffer[CC3000_TX_BUFFER_SIZE];
@@ -123,14 +154,17 @@ static int sendLine(long sd, const char *buf, long len, long flags) {
 
 	do {
 
-		if(dataLeft < CC3000_TX_BUFFER_SIZE - 3) {
+		if(dataLeft < CC3000_TX_BUFFER_SIZE - HCI_CMND_SEND_ARG_LENGTH - HEADERS_SIZE_DATA - 3) {
 			dataLength = dataLeft;
 			chunkSize = dataLeft + 2;
 			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
 			buffer[dataLength] = '\r';
 			buffer[dataLength + 1] = '\n';
+
+			// Final packet chunk
+			dataSent = true;
 		} else {
-			dataLength = CC3000_TX_BUFFER_SIZE - 1;
+			dataLength = CC3000_TX_BUFFER_SIZE - HCI_CMND_SEND_ARG_LENGTH - HEADERS_SIZE_DATA - 1;
 			chunkSize = dataLength;
 			memcpy(&buffer[0], &buf[bufferIndex], dataLength);
 		}
@@ -138,18 +172,13 @@ static int sendLine(long sd, const char *buf, long len, long flags) {
 		snd = send(sd, &buffer[0], chunkSize, flags);
 
 		if(snd <= 0) {
-			// Error occured
+			// Error occurred
 			dataSent = true;
 			totalLength = snd;
 		} else if(snd == chunkSize) {
 			dataLeft -= dataLength;
 			totalLength += dataLength;
 			bufferIndex += dataLength;
-
-			if(dataLeft == 0) {
-				dataSent = true;
-			}
-
 		} else {
 			// CC3000 didn't send the whole data?
 			while(1);
@@ -282,23 +311,51 @@ static void initHardware(void) {
 }
 
 /**
- * System Tick Initialization. Fires a timer interrupt at 10Hz (every 100ms) to start sampling
+ * systickInit
+ *
+ * System Tick Initialization. Uses RTC_A to keep track of time.
+ * Fires an RTC interrupt at 16Hz to start sampling.
  */
 static void systickInit(void) {
 
-    // Configure Timer
-    // Set to 10Hz counter (ACLK/8 = 32768/8 = 4096)  (4096/10 ~= 410)
-    TIMER_A_configureUpMode(SYSTICK_BASE,
-    	TIMER_A_CLOCKSOURCE_ACLK,
-    	TIMER_A_CLOCKSOURCE_DIVIDER_8,
-    	409,
-    	TIMER_A_TAIE_INTERRUPT_ENABLE,
-    	TIMER_A_CAPTURECOMPARE_INTERRUPT_DISABLE,
-        TIMER_A_DO_CLEAR);
+	// Initialize the RTC_A interrupt. RTC_A is configured in counter
+	// mode and triggers at 16Hz. This is calculated by:
+	// (ACLK / PS0) / PS1 = RTC Clock
+	// (32768Hz / 4) / 2 = 4096Hz
+	// Interrupt event happens at 2^8 = 256.
+	// 4096Hz / 256 = 16Hz
+
+	// 8 Bit Overflow Interrupt, coming from PS1
+	RTC_A_counterInit(RTC_A_BASE,
+		RTC_A_CLOCKSELECT_RT1PS,
+		RTC_A_COUNTERSIZE_8BIT);
+
+	// PS0 = ACLK / 4
+	RTC_A_counterPrescaleInit(RTC_A_BASE,
+		RTC_A_PRESCALE_0,
+		RTC_A_PSCLOCKSELECT_ACLK,
+		RTC_A_PSDIVIDER_4);
+
+	// PS1 = PS0 / 2
+	RTC_A_counterPrescaleInit(RTC_A_BASE,
+		RTC_A_PRESCALE_1,
+		RTC_A_PSCLOCKSELECT_RT0PS,
+		RTC_A_PSDIVIDER_2);
+
+	RTC_A_clearInterrupt(RTC_A_BASE, RTC_A_TIME_EVENT_INTERRUPT);
+	RTC_A_enableInterrupt(RTC_A_BASE, RTC_A_TIME_EVENT_INTERRUPT);
 }
 
-static void (*CurrentState)(void);
-
+/**
+ * streamState
+ *
+ * In this state the MSP430 is actively sending data back to the server.
+ * During each iteration of this state the MSP430 tries to read from the
+ * CC3000 to determine if any new commands have come in.
+ *
+ * The MSP430 can leave this state if it needs to be reconfigured or all
+ * web clients have stopped monitoring it so it can pause streaming.
+ */
 static void streamState(void) {
 
 	int32_t status = 0;
@@ -320,7 +377,7 @@ static void streamState(void) {
 		if(jsonStatus == JSMN_SUCCESS) {
 
 			// Determine command
-			switch(SERVER_parseStreamData(rxBuffer, tokens)) {
+			switch(SERVER_parseCommand(rxBuffer, tokens)) {
 			case 'a':
 				// Data ACK
 				acks = SERVER_getACKs(rxBuffer, tokens);
@@ -330,8 +387,80 @@ static void streamState(void) {
 				// Write Data
 				SERVER_writeData(rxBuffer, tokens);
 				break;
+			case 'p':
+				// Pause Streaming
+				if(SERVER_pauseStreaming(rxBuffer, tokens) == true) {
+					CurrentState = pausedState;
+					RTC_A_holdClock(RTC_A_BASE);
+					StartSample = false;
+				}
+				break;
 			case 'd':
-				// Drop to config state - Not implemented
+				// Drop to configuration state
+				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
+					CurrentState = configState;
+					RTC_A_holdClock(RTC_A_BASE);
+					StartSample = false;
+
+					// Tell backend server we are dropping to configuration
+					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK) - 1, 0);
+				}
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * pausedState
+ *
+ * In this state the MSP430 does not stream data to the server but it
+ * has been configured and is ready for streaming. During each iteration
+ * the MSP430 tries to read from the CC3000 to determine if there are any
+ * new commands.
+ *
+ * The MSP430 can leave this state if a web client connects and the MSP430
+ * needs to start streaming or if the MSP430 needs to be reconfigured.
+ */
+static void pausedState(void) {
+
+	int32_t status = 0;
+	char rxBuffer[256];
+	jsmntok_t tokens[128];
+	jsmn_parser jsonParser;
+	jsmnerr_t jsonStatus;
+
+	// Waiting to resume or re-configure
+	status = recvLine(Socket, rxBuffer, 256, 0);
+	if(status > 0) {
+
+		// Parse JSON
+		jsmn_init(&jsonParser);
+		rxBuffer[status] = '\0';
+		jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
+
+		if(jsonStatus == JSMN_SUCCESS) {
+
+			// Determine command
+			switch(SERVER_parseCommand(rxBuffer, tokens)) {
+			case 'r':
+				// Resume Stream
+				if(SERVER_resumeStream(rxBuffer, tokens) == true) {
+					DataMsgCount = 0;
+					CurrentState = streamState;
+
+					// Start Timer
+					RTC_A_startClock(RTC_A_BASE);
+				}
+				break;
+			case 'd':
+				// Drop to configuration state
+				if(SERVER_dropToConfig(rxBuffer, tokens) == true) {
+					CurrentState = configState;
+
+					// Tell backend we are dropping to configuration
+					sendLine(Socket, DROPCONFIGOK, sizeof(DROPCONFIGOK) - 1, 0);
+				}
 				break;
 			}
 		}
@@ -349,8 +478,7 @@ static void configState(void) {
 
 	typedef enum {
 		RECV_CONFIG,
-		SEND_CONFIG_OK,
-		RECV_RESUME
+		SEND_CONFIG_OK
 	} step_t;
 
 	static step_t step = RECV_CONFIG;
@@ -395,40 +523,10 @@ static void configState(void) {
 		} while (status != 4);
 
 		SERVER_initInterfaces();
+		CurrentState = pausedState;
 
-		step = RECV_RESUME;
-		break;
-
-	// Waiting for resume streaming
-	case RECV_RESUME:
-
-		status = recvLine(Socket, rxBuffer, 256, 0);
-
-		if(status > 0) {
-
-			// Parse JSON
-			rxBuffer[status] = '\0';
-			jsonStatus = jsmn_parse(&jsonParser, rxBuffer, tokens, 128);
-
-			if (jsonStatus == JSMN_SUCCESS) {
-				parseStatus = SERVER_resumeStream(rxBuffer, tokens);
-			} else {
-				parseStatus = false;
-			}
-
-			if(parseStatus == true) {
-				DataMsgCount = 0;
-				CurrentState = streamState;
-
-				// Start Timer
-				TIMER_A_clear(SYSTICK_BASE);
-				TIMER_A_startCounter(SYSTICK_BASE,
-					TIMER_A_UP_MODE);
-
-				// Start at RECV_CONFIG if we get reconfigured
-				step = RECV_CONFIG;
-			}
-		}
+		// Start at RECV_CONFIG if we get reconfigured
+		step = RECV_CONFIG;
 		break;
 	}
 }
@@ -557,7 +655,7 @@ int main(void) {
 	// Timeout for receive in ms
 	int32_t timeout = 100;
 
-	WDTCTL = WDTPW | WDTHOLD; // Stop watchdog timer
+	WDT_A_hold(WDT_A_BASE); // Stop watchdog timer
 
 	initHardware();
 	systickInit();
@@ -571,6 +669,7 @@ int main(void) {
 
 	while ((ulCC3000Connected == 0) || (ulCC3000DHCP == 0));
 
+	// Setting up heartbeat
 	P1OUT |= BIT0;
 
 	do {
@@ -588,8 +687,11 @@ int main(void) {
 
 		if((CurrentState == &streamState) && (StartSample == true) && (DataMsgCount < 10)) {
 
-			// Start the sample
+			// Clear the sample flag
+			__disable_interrupt();
 			StartSample = false;
+			__enable_interrupt();
+
 			dataLength = SERVER_sendData(data);
 
 			// Send the data
@@ -604,28 +706,24 @@ int main(void) {
 	}
 }
 
-#pragma vector = SYSTICK_VECTOR
-__interrupt void SYSTICK(void) {
-	switch (__even_in_range(TA0IV, 0x0E)) {
-	case 0x02:
-		break; // Vector 0x0: CCR1
-	case 0x04:
-		break; // Vector 0x02: CCR2
-	case 0x06:
-		break; // Vector 0x04: CCR3
-	case 0x08:
-		break; // Vector 0x06: CCR4
-	case 0x0A:
-		break; // Vector 0x08: CCR5
-	case 0x0C:
-		break; // Vector 0x0A: CCR6
-	case 0x0E: // Vector 0x0E: TAxCTL TAIFG
+#pragma vector=RTC_VECTOR
+__interrupt void RTC_A_ISR(void) {
+	switch (__even_in_range(RTCIV, 16)) {
+	case 0:
+		break;  //No interrupts
+	case 2:
+		break;  //RTCRDYIFG
+	case 4:     //RTCEVIFG
 		StartSample = true; // Start a new sample
 		__bic_SR_register_on_exit(LPM4_bits);
-		// Exit LPM on exit
 		break;
+	case 6:
+		break;  //RTCAIFG
+	case 8:
+		break;  //RT0PSIFG
+	case 10:
+		break;  //RT1PSIFG
 	default:
 		break;
 	}
 }
-

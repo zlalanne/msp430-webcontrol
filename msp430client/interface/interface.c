@@ -8,6 +8,7 @@
 #include "interface.h"
 #include "interface_analog.h"
 #include "interface_digital.h"
+#include "util/util.h"
 
 // Include interface for selected board
 #ifdef __MSP430F5529__
@@ -33,6 +34,7 @@ static uint16_t interfaceDecode(char *pin, uint8_t pinLength){
     return 0xFFFF;
 }
 
+
 // Dummy functions to get rid of compiler warnings. These functions
 // can be used when an interface does not need to implement certain
 // functions
@@ -52,28 +54,28 @@ const genericInterface_t digitalReadInterface = {
 		interfaceDigitalReadInit,
 		interfaceDigitalRead,
 		dummyWrite,
-		interfaceDecode
+		UTIL_atoi
 };
 
 const genericInterface_t digitalOutputInterface = {
 		interfaceDigitalOutputInit,
 		interfaceDigitalOutputRead,
 		interfaceDigitalOutputWrite,
-		interfaceDecode
+		UTIL_atoi
 };
 
 const genericInterface_t analogReadInterface = {
 		dummyInit,
 		interfaceAnalogRead,
 		dummyWrite,
-		interfaceDecode
+		UTIL_atoi
 };
 
 const genericInterface_t analogWriteInterface = {
 		dummyInit,
 		dummyRead,
 	    interfaceAnalogWrite,
-	    interfaceDecode
+	    UTIL_atoi
 };
 
 /**

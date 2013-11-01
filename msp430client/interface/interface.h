@@ -19,7 +19,7 @@ typedef struct
     void (*const init)(uint8_t pin);
     uint16_t (*const read)(uint8_t pin, char* input);
     void (*const write)(uint8_t pin, char* output, char output_length);
-    uint16_t (*const decode)(char* pinStr, uint8_t pin_length);
+    uint8_t (*const decode)(char* pinStr, uint8_t pin_length);
 } genericInterface_t;
 
 typedef struct

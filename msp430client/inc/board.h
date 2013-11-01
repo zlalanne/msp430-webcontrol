@@ -74,9 +74,6 @@
 #define UART2_PORT   P2SEL1
 #define UART2_PIN    BIT1
 
-#define SYSTICK_BASE	TIMER_A0_BASE
-#define SYSTICK_VECTOR	TIMER0_A1_VECTOR
-
 
 /*  This macro is for use by other macros to form a fully valid C statement.  */
 #define st(x)      do { x } while (__LINE__ == -1)

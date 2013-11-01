@@ -71,10 +71,13 @@ class GraphDisplayInLine(DisplayInline):
 class ButtonDisplayInLine(DisplayInline):
     model = ButtonDisplay
 
+class SliderDisplayInLine(DisplayInline):
+    model = SliderDisplay
+
 class MSP430Admin(admin.ModelAdmin):
     readonly_fields = ('mac_address', 'current_ip', 'online')
     fields = ('name', 'mac_address', 'current_ip', 'online')
     form = MyAdminForm
-    inlines = [NumericDisplayInLine, ProgressBarDisplayInLine, GraphDisplayInLine, ButtonDisplayInLine]
+    inlines = [NumericDisplayInLine, ProgressBarDisplayInLine, GraphDisplayInLine, ButtonDisplayInLine, SliderDisplayInLine]
 
 admin.site.register(MSP430, MSP430Admin)
